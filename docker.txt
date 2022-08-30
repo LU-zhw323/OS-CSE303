@@ -1,0 +1,1 @@
+docker run --privileged --rm -v /C/Users/WUzy2/cse303_f22_zhw323:/root --name cse303dev -it cse303
