@@ -37,21 +37,24 @@ bool padR(vector<uint8_t> &v, size_t sz){
   return true;
 }
 
-/// Check if the provided result vector is a string representation of ERR_CRYPTO
+
+
+/// Check if the provided result vector is a string representation of __OK__
 ///
-/// @param v The vector being compared to RES_ERR_CRYPTO
+/// @param v The vector being compared to RES_OK
 ///
-/// @returns true if the vector contents are RES_ERR_CRYPTO, false otherwise
-bool check_err_crypto(const vector<uint8_t> &v){
-  std::string content;
-  content.assign(v.begin(), v.end());
-  if(content.compare(RES_ERR_CRYPTO) == 0){
-    return true;
+/// @returns true if the vector contents are RES_OK, false otherwise
+bool check_OK(const vector<uint8_t> &v){
+  std::string content = RES_OK;
+  vector<uint8_t> Okey;
+  Okey.insert(Okey.end(), content.begin(), content.end());
+  for(int i = 0; i < RES_OK.length(); i++){
+    if(Okey.at(i) != v.at(i)){
+      return false;
+    }
   }
-  return false;
+  return true;
 }
-
-
 
 
 /// If a buffer consists of OKbbbbd+, where bbbb is a 4-byte binary integer
@@ -224,14 +227,20 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
   //call sendcmd to send message and return result
   vector<uint8_t> response = send_cmd(sd, pubkey, cmd, msg);
   //check response
+  /*
   const std::string content;
   content.assign(response.begin(), response.end());
   if(content.compare(RES_OK) == 0){
     cout << RES_OK;
   }
+  */
+ if(check_OK(response) == true){
+  cout << RES_OK;
+ }
 
 
 }
+
 
 /// req_bye() writes a request for the server to exit.
 ///
@@ -249,8 +258,13 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
   assert(pass.length() > 0);
 
   //send cmd to server
-  const std::string cmd = REQ_BYE;
   vector<uint8_t> msg = ablock_ss(user,pass);
+  auto response = send_cmd(sd, pubkey, REQ_BYE, msg);
+  if(check_OK(response) == true){
+    cout << RES_OK;
+  }
+
+
 
 }
 
@@ -262,12 +276,17 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param pass    The password of the user doing the request
 void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
-  cout << "requests.cc::req_sav() is not implemented\n";
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
+  //send cmd to server
+  vector<uint8_t> msg = ablock_ss(user,pass);
+  auto response = send_cmd(sd, pubkey, REQ_SAV, msg);
+  if(check_OK(response) == true){
+    cout << RES_OK;
+  }
 }
 
 /// req_set() sends the SET command to set the content for a user
@@ -279,13 +298,28 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param setfile The file whose contents should be sent
 void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &setfile, const string &) {
-  cout << "requests.cc::req_set() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
   assert(setfile.length() > 0);
+  //Load entire file of setfile->File block
+  vector<uint8_t> File = load_entire_file(setfile);
+  //Take the size of file->Size block
+  size_t file_s = File.size();
+  vector<uint8_t> Size (sizeof(File.size()));
+  memcpy(Size.data(), &file_s, sizeof(File.size()));
+  //Combine 2 block to a entrie file_block
+  vector<uint8_t> file_block = ablock_ss(user, pass);
+  file_block.insert(file_block.end(), Size.begin(), Size.end());
+  file_block.insert(file_block.end(), File.begin(), File.end());
+
+  auto response = send_cmd(sd,pubkey, REQ_SET, file_block);
+  if(check_OK(response) == true){
+    cout << RES_OK;
+  }
 }
 
 /// req_get() requests the content associated with a user, and saves it to a
@@ -298,13 +332,25 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param getname The name of the user whose content should be fetched
 void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &getname, const string &) {
-  cout << "requests.cc::req_get() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
   assert(getname.length() > 0);
+
+  //Create a vector containing user, user length, pass, pass length, getname, get name length
+  vector<uint8_t> msg = ablock_ss(user, pass);
+  vector<uint8_t> temp = ablock_s(getname);
+  msg.insert(msg.end(), temp.begin(), temp.end());
+
+  auto response = send_cmd(sd, pubkey, REQ_GET, msg);
+  //Send response to file
+  if(check_OK(response) == true){
+    cout << RES_OK;
+    send_result_to_file(response, getname + ".file.dat");
+  }
 }
 
 /// req_all() sends the ALL command to get a listing of all users, formatted
@@ -317,11 +363,18 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param allfile The file where the result should go
 void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &allfile, const string &) {
-  cout << "requests.cc::req_all() is not implemented\n";
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
   assert(allfile.length() > 0);
+
+  vector<uint8_t> msg = ablock_ss(user,pass);
+  auto response = send_cmd(sd, pubkey, REQ_ALL, msg);
+  if(check_OK(response) == true){
+    cout << RES_OK;
+    send_result_to_file(response, allfile);
+  }
+
 }
