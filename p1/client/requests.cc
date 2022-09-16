@@ -21,7 +21,7 @@ using namespace std;
 /// @param sz The number of bytes to add
 ///
 /// @returns true if the padding was done, false on any error
-bool padR(vec<uint8_t> &v, size_t sz){
+bool padR(vector<uint8_t> &v, size_t sz){
   /// @param counter count how many bytes we need to pad in
   size_t counter = v.size();
   while(counter < sz){
@@ -42,7 +42,7 @@ bool padR(vec<uint8_t> &v, size_t sz){
 /// @param v The vector being compared to RES_ERR_CRYPTO
 ///
 /// @returns true if the vector contents are RES_ERR_CRYPTO, false otherwise
-bool check_err_crypto(const vec &v){
+bool check_err_crypto(const vector<uint8_t> &v){
   std::string content;
   content.assign(v.begin(), v.end());
   if(content.compare(RES_ERR_CRYPTO) == 0){
@@ -59,7 +59,7 @@ bool check_err_crypto(const vec &v){
 ///
 /// @param buf      The buffer holding a response
 /// @param filename The name of the file to write
-void send_result_to_file(const vec &buf, const string &filename){
+void send_result_to_file(const vector<uint8_t> &buf, const string &filename){
   size_t size_buf = buf.size();
   //sd 4 bytes + __OK__ 8 bytes + 4 bytes binary integer = 16 bytes
   if(size_buf > 16){
@@ -107,7 +107,7 @@ vector<uint8_t> ablock_ss(const string &s1, const string &s2){
 /// @param sz The number of bytes to add
 ///
 /// @returns true if the padding was done, false on any error
-bool pad0(vec<uint8_t> &v, size_t sz){
+bool pad0(vector<uint8_t> &v, size_t sz){
   /// counter counts how many bytes we need to pad in
   size_t counter = v.size();
   while(counter < sz){
@@ -140,14 +140,14 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
   //Apply the helper function in crypto.h to generate aes key
   vector<uint8_t> aes_key = create_aes_key();
   //Generate aes context to do encript/decript
-  EVP_CIPHER_CTX *ctx = create_aes_context(aex_key,true);
+  EVP_CIPHER_CTX *ctx = create_aes_context(aes_key,true);
   //Encript ablock
   vector<uint8_t> ablock = aes_crypt_msg(ctx,msg);
 
   //Get ready to use public key to encrypt rblock
   vector<uint8_t> pre_rblock;
   //Insert cmd, aeskey, length of ablock
-  pre_rblock.insert(pre_rblock.end(), cmd.begin(), cmd.edn());
+  pre_rblock.insert(pre_rblock.end(), cmd.begin(), cmd.end());
   pre_rblock.insert(pre_rblock.end(), aes_key.begin(), aes_key.end());
   size_t size_ablock = ablock.size();
   vector<uint8_t> len_ablock(sizeof(size_ablock));
@@ -167,9 +167,9 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
 
 
   //Reciving respond from server and decrypt it
-  vector<uint8_t> recive = reliable_get_to_eof(sd);
+  vector<uint8_t> receive = reliable_get_to_eof(sd);
   //Generate the decrypt key
-  reset_aes_context(ctx, ase_key, false);
+  reset_aes_context(ctx, aes_key, false);
   vector<uint8_t> response = aes_crypt_msg(ctx, receive);
   //reclaim memory
   reclaim_aes_context(ctx);
@@ -193,13 +193,14 @@ void req_key(int sd, const string &keyfile) {
   assert(keyfile.length() > 0);
 
   //Insert request message into a vector
-  vector<uinit8_t> k_block;
-  k_block.insert(kblock.end(),REQ_KEY.begin(),REQ_key.end());
+  vector<uint8_t> k_block;
+  std::string req = REQ_KEY;
+  k_block.insert(k_block.end(),req.begin(),req.end());
   pad0(k_block,LEN_RKBLOCK);
 
   //send and recive key
-  send_reliably(sd, kblock);
-  vecotr<uint8_t> key = reliable_get_to_eof(sd);
+  send_reliably(sd, k_block);
+  vector<uint8_t> key = reliable_get_to_eof(sd);
   write_file(keyfile, key, 0);
 }
 
@@ -219,14 +220,14 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
   assert(pass.length() > 0);
   //From a ablock with unencypt message(user+password)
   vector<uint8_t> msg = ablock_ss(user, pass);
-  const std::string string cmd = REQ_REG;
+  const std::string cmd = REQ_REG;
   //call sendcmd to send message and return result
-  vector<uint8_t> response = sendcmd(sd, pubkey, cmd, msg);
+  vector<uint8_t> response = send_cmd(sd, pubkey, cmd, msg);
   //check response
   const std::string content;
   content.assign(response.begin(), response.end());
   if(content.compare(RES_OK) == 0){
-    printf(RES_OK);
+    cout << RES_OK;
   }
 
 
