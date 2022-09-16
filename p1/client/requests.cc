@@ -52,6 +52,8 @@ bool check_err_crypto(const vec &v){
 }
 
 
+
+
 /// If a buffer consists of OKbbbbd+, where bbbb is a 4-byte binary integer
 /// and d+ is a string of characters, write the bytes (d+) to a file
 ///
@@ -185,10 +187,20 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
 /// @param sd      The open socket descriptor for communicating with the server
 /// @param keyfile The name of the file to which the key should be written
 void req_key(int sd, const string &keyfile) {
-  cout << "requests.cc::req_key() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(keyfile.length() > 0);
+
+  //Insert request message into a vector
+  vector<uinit8_t> k_block;
+  k_block.insert(kblock.end(),REQ_KEY.begin(),REQ_key.end());
+  pad0(k_block,LEN_RKBLOCK);
+
+  //send and recive key
+  send_reliably(sd, kblock);
+  vecotr<uint8_t> key = reliable_get_to_eof(sd);
+  write_file(keyfile, key, 0);
 }
 
 /// req_reg() sends the REG command to register a new user
@@ -199,12 +211,25 @@ void req_key(int sd, const string &keyfile) {
 /// @param pass    The password of the user doing the request
 void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
-  cout << "requests.cc::req_reg() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
+  //From a ablock with unencypt message(user+password)
+  vector<uint8_t> msg = ablock_ss(user, pass);
+  const std::string string cmd = REQ_REG;
+  //call sendcmd to send message and return result
+  vector<uint8_t> response = sendcmd(sd, pubkey, cmd, msg);
+  //check response
+  const std::string content;
+  content.assign(response.begin(), response.end());
+  if(content.compare(RES_OK) == 0){
+    printf(RES_OK);
+  }
+
+
 }
 
 /// req_bye() writes a request for the server to exit.
@@ -215,12 +240,17 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
 /// @param pass    The password of the user doing the request
 void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
              const string &, const string &) {
-  cout << "requests.cc::req_bye() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubkey);
   assert(user.length() > 0);
   assert(pass.length() > 0);
+
+  //send cmd to server
+  const std::string cmd = REQ_BYE;
+  vector<uint8_t> msg = ablock_ss(user,pass);
+
 }
 
 /// req_sav() writes a request for the server to save its contents
