@@ -6,7 +6,8 @@
 #include <vector>
 
 #include "map.h"
-
+using namespace std;
+using std::begin, std::end;
 /// SequentialMap is a sequential implementation of the Map interface (a
 /// Key/Value store).  This map has O(n) complexity.  It's just for p1.
 ///
@@ -42,8 +43,20 @@ public:
   /// @return true if the key/value was inserted, false if the key already
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
-    std::cout << "sequentialmap.h::insert() is not implemented\n";
-    return false;
+    //Create a printer of entries
+    auto Entry_p = entries.begin();
+    //Go through the list to see if the key is already there
+    while(Entry_p != entries.end()){
+      auto current_p = *(Entry_p)
+      if(current_p.first == key){
+        return false
+      }
+      Entry_p += 1;
+    }
+    std::pair<K, V> new_pair = make_pair(key,val);
+    Entry_p.insert(end(Entry_p), new_pair);
+    on_success();
+    return true;
   }
 
   /// Insert the provided key/value pair if there is no mapping for the key yet.
@@ -59,8 +72,22 @@ public:
   ///         existed in the table and was thus updated instead
   virtual bool upsert(K key, V val, std::function<void()> on_ins,
                       std::function<void()> on_upd) {
-    std::cout << "sequentialmap.h::upsert() is not implemented\n";
-    return false;
+    //Create a printer of entries
+    auto Entry_p = entries.begin();
+    //Go through the list to see if the key is already there
+    while(Entry_p != entries.end()){
+      auto current_p = *(Entry_p)
+      if(current_p.first == key){
+        current_p.second = val;
+        on_upd();
+        return false;
+      }
+      Entry_p += 1;
+    }
+    std::pair<K, V> new_pair = make_pair(key,val);
+    Entry_p.insert(end(Entry_p), new_pair);
+    on_ins();
+    return true;
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -72,7 +99,17 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with(K key, std::function<void(V &)> f) {
-    std::cout << "sequentialmap.h::do_with() is not implemented\n";
+    //Create a printer of entries
+    auto Entry_p = entries.begin();
+    //Go through the list to see if the key is already there
+    while(Entry_p != entries.end()){
+      auto current_p = *(Entry_p)
+      if(current_p.first == key){
+        f(current_p.second);
+        return true;
+      }
+      Entry_p += 1;
+    }
     return false;
   }
 
@@ -85,8 +122,18 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with_readonly(K key, std::function<void(const V &)> f) {
-    std::cout << "sequentialmap.h::do_with_readonly() is not implemented\n";
-    return false;
+      //Create a printer of entries
+      auto Entry_p = entries.begin();
+      //Go through the list to see if the key is already there
+      while(Entry_p != entries.end()){
+        auto current_p = *(Entry_p)
+        if(current_p.first == key){
+          f(current_p.second);
+          return true;
+        }
+        Entry_p += 1;
+      }
+      return false;
   }
 
   /// Remove the mapping from a key to its value
@@ -96,8 +143,19 @@ public:
   ///
   /// @return true if the key was found and the value unmapped, false otherwise
   virtual bool remove(K key, std::function<void()> on_success) {
-    std::cout << "sequentialmap.h::remove() is not implemented\n";
-    return false;
+    //Create a printer of entries
+      auto Entry_p = entries.begin();
+      //Go through the list to see if the key is already there
+      while(Entry_p != entries.end()){
+        auto current_p = *(Entry_p)
+        if(current_p.first == key){
+          entries.erase(Entry_p);
+          on_success();
+          return true;
+        }
+        Entry_p += 1;
+      }
+      return false;
   }
 
   /// Apply a function to every key/value pair in the map.  Note that the
@@ -108,6 +166,14 @@ public:
   ///             useful for 2pl
   virtual void do_all_readonly(std::function<void(const K, const V &)> f,
                                std::function<void()> then) {
-    std::cout << "sequentialmap.h::do_all_readonly() is not implemented\n";
+    //Create a printer of entries
+    auto Entry_p = entries.begin();
+    //Go through the list to see if the key is already there
+    while(Entry_p != entries.end()){
+      auto current_p = *(Entry_p)
+      f(current_p.first,current_p.scend);
+      Entry_p += 1;
+    }
+    then();
   }
 };
