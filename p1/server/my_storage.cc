@@ -86,7 +86,7 @@ public:
     //Add content
     newUser.content = {};
     //Function on success
-    std::function<viod()> onsuccess = [](){cout << RES_OK};
+    std::function<viod()> onsuccess = [](){cout << RES_OK;};
     //Insert newUser into table
     bool result = auth_table->insert(user, newUser, onsuccess);
     if(!result){
@@ -109,7 +109,26 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Firstly, check if user can log in
+    result_t login = auth(user, pass);
+    if(login.succeeded == false){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+
+    //Define function to update content
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
+      entry.content = content;
+      auth_table->upsert(user, entry, [](){cout << "Insert successfully";}, [](){cout << "Update successfully";});
+    }
+
+    bool result = auth_table->do_with(user, f);
+    if(!result){
+      return {false, RES_ERR_UNIMPLEMENTED, {}};
+    }
+    else{
+      return {true, RES_OK, {}};
+    }
+
   }
 
   /// Return a copy of the user data for a user, but do so only if the password
@@ -123,12 +142,35 @@ public:
   ///         an error
   virtual result_t get_user_data(const string &user, const string &pass,
                                  const string &who) {
-    cout << "my_storage.cc::get_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(who.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Firstly, check if user can log in
+    result_t login = auth(user, pass);
+    if(login.succeeded == false){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Define the function to fetch content
+    vector<uint8_t> content;
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
+      content = entry.content;
+    }
+    bool result = auth_table->do_with(user, f);
+    if(!result){
+      return {false, RES_ERR_LOGIN, {}};
+    }
+    else{
+      if(content.empty()){
+        return {false, RES_ERR_NO_USER, {}};
+      }
+      else{
+        return {true, RES_OK, {}};
+      }
+    }
+
+
+    
   }
 
   /// Return a newline-delimited string containing all of the usernames in the
@@ -139,11 +181,24 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t get_all_users(const string &user, const string &pass) {
-    cout << "my_storage.cc::get_all_users() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Firstly, check if user can log in
+    result_t login = auth(user, pass);
+    if(login.succeeded == false){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+
+    string names;
+    std::function<void(const string, const AuthTableEntry &)> f = [&](string name, AuthTableEntry &entry){
+      names.append(name);
+      names.append("\n");
+    }
+
+    auth_table->do_all_readonly(f, [](){});
+    return(true, RES_OK, {});
   }
 
   /// Authenticate a user
@@ -194,7 +249,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    cout << "my_storage.cc::shutdown() is not implemented\n";
+    
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
