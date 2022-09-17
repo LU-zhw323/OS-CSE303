@@ -13,6 +13,7 @@
 #include "requests.h"
 
 using namespace std;
+using std::begin, std::end;
 
 //Below is some helper function
 /// Pad a vec with random characters to get it to size sz
@@ -26,7 +27,7 @@ bool padR(vector<uint8_t> &v, size_t sz){
   size_t counter = v.size();
   while(counter < sz){
     try{
-      //pushback a random characters to the vec
+      //pushback a random characters to the vec(a-z)
       v.push_back(rand()%26);
     }
     catch(std::bad_alloc& ba){
@@ -39,22 +40,26 @@ bool padR(vector<uint8_t> &v, size_t sz){
 
 
 
-/// Check if the provided result vector is a string representation of __OK__
+
+
+/// Check if the provided result vector is a string representation of ERR_CRYPTO
 ///
-/// @param v The vector being compared to RES_OK
+/// @param v The vector being compared to RES_ERR_CRYPTO
 ///
-/// @returns true if the vector contents are RES_OK, false otherwise
-bool check_OK(const vector<uint8_t> &v){
-  std::string content = RES_OK;
-  vector<uint8_t> Okey;
-  Okey.insert(Okey.end(), content.begin(), content.end());
-  for(int i = 0; i < RES_OK.length(); i++){
-    if(Okey.at(i) != v.at(i)){
+/// @returns true if the vector contents are RES_ERR_CRYPTO, false otherwise
+bool check_err_crypto(const vector<uint8_t> &v){
+  std::string content = RES_ERR_CRYPTO;
+  vector<uint8_t> Error;
+  Error.assign(content.begin(), content.end());
+  for(int i = 0; i< Error.size(); i++){
+    if(Error[i] != v[i]){
       return false;
     }
   }
+
   return true;
 }
+
 
 
 /// If a buffer consists of OKbbbbd+, where bbbb is a 4-byte binary integer
@@ -82,9 +87,11 @@ vector<uint8_t> ablock_s(const string &s){
   //We need to first assign the length to a same type of vector
   vector<uint8_t> s_len_block(sizeof(s_length));
   memcpy(s_len_block.data(), &s_length, sizeof(s_length));
-  //We want length is before the string
-  u_ablock.insert(u_ablock.end(), s_len_block.begin(), s_len_block.end());
-  u_ablock.insert(u_ablock.end(), s.begin(),s.end());
+  vector<uint8_t> s_block;
+  s_block.assign(s.begin(), s.end());
+  //push_back won't work for insert a vector into another vector
+  u_ablock.insert(end(u_ablock), begin(s_len_block), end(s_len_block));
+  u_ablock.insert(end(u_ablock), begin(s_block), end(s_block));
   return u_ablock;
 }
 
@@ -98,8 +105,8 @@ vector<uint8_t> ablock_ss(const string &s1, const string &s2){
   vector<uint8_t> s1_ablock = ablock_s(s1);
   vector<uint8_t> s2_ablock = ablock_s(s2);
   vector<uint8_t> u_ablock;
-  u_ablock.insert(u_ablock.end(), s1_ablock.begin(), s1_ablock.end());
-  u_ablock.insert(u_ablock.end(), s2_ablock.begin(), s2_ablock.end());
+  u_ablock.insert(end(u_ablock), begin(s1_ablock), end(s1_ablock));
+  u_ablock.insert(end(u_ablock), begin(s2_ablock), end(s2_ablock));
   return u_ablock;
 }
 
@@ -115,7 +122,7 @@ bool pad0(vector<uint8_t> &v, size_t sz){
   size_t counter = v.size();
   while(counter < sz){
     try{
-      //pushback a random characters to the vec
+      //pushback a 0 characters to the vec
       v.push_back(0);
     }
     catch(std::bad_alloc& ba){
@@ -124,6 +131,13 @@ bool pad0(vector<uint8_t> &v, size_t sz){
     counter += 1;
   }
   return true;
+}
+
+///Helper function to generate a vector of given string
+vector<uint8_t> Strblock(const string s){
+  vector<uint8_t> strblock(sizeof(s.length()));
+  strblock.assign(s.begin(), s.end());
+  return strblock;
 }
 
 /// Send a message to the server, using the common format for secure messages,
@@ -150,12 +164,14 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
   //Get ready to use public key to encrypt rblock
   vector<uint8_t> pre_rblock;
   //Insert cmd, aeskey, length of ablock
-  pre_rblock.insert(pre_rblock.end(), cmd.begin(), cmd.end());
-  pre_rblock.insert(pre_rblock.end(), aes_key.begin(), aes_key.end());
+  vector<uint8_t> cmdBlock = Strblock(cmd);
+  pre_rblock.insert(end(pre_rblock), begin(cmdBlock), end(cmdBlock));
+  pre_rblock.insert(end(pre_rblock), begin(aes_key), end(aes_key));
+  //pre_rblock.push_back(aes_key);
   size_t size_ablock = ablock.size();
   vector<uint8_t> len_ablock(sizeof(size_ablock));
   memcpy(len_ablock.data(), &size_ablock, sizeof(size_ablock));
-  pre_rblock.insert(pre_rblock.end(), len_ablock.begin(), len_ablock.end());
+  pre_rblock.insert(end(pre_rblock), begin(len_ablock), end(len_ablock));
   
   //pad random variable til it fit the size of rblock
   padR(pre_rblock, LEN_RBLOCK_CONTENT);
@@ -167,12 +183,13 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
   //Send both rblock and ablock to the server
   send_reliably(sd, rblock);
   send_reliably(sd, ablock);
-
+  
 
   //Reciving respond from server and decrypt it
   vector<uint8_t> receive = reliable_get_to_eof(sd);
   //Generate the decrypt key
   reset_aes_context(ctx, aes_key, false);
+  //Use decrypt key to decrypt
   vector<uint8_t> response = aes_crypt_msg(ctx, receive);
   //reclaim memory
   reclaim_aes_context(ctx);
@@ -198,13 +215,15 @@ void req_key(int sd, const string &keyfile) {
   //Insert request message into a vector
   vector<uint8_t> k_block;
   std::string req = REQ_KEY;
-  k_block.insert(k_block.end(),req.begin(),req.end());
+  k_block.assign(req.begin(), req.end());
   pad0(k_block,LEN_RKBLOCK);
 
   //send and recive key
   send_reliably(sd, k_block);
-  vector<uint8_t> key = reliable_get_to_eof(sd);
-  write_file(keyfile, key, 0);
+  vector<uint8_t> response = reliable_get_to_eof(sd);
+  if(check_err_crypto(response) == false){
+    write_file(keyfile, response, 0);
+ }
 }
 
 /// req_reg() sends the REG command to register a new user
@@ -234,7 +253,7 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
     cout << RES_OK;
   }
   */
- if(check_OK(response) == true){
+ if(check_err_crypto(response) == false){
   cout << RES_OK;
  }
 
@@ -260,7 +279,7 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
   //send cmd to server
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_BYE, msg);
-  if(check_OK(response) == true){
+  if(check_err_crypto(response) == false){
     cout << RES_OK;
   }
 
@@ -284,7 +303,7 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
   //send cmd to server
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_SAV, msg);
-  if(check_OK(response) == true){
+  if(check_err_crypto(response) == false){
     cout << RES_OK;
   }
 }
@@ -313,11 +332,11 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
   memcpy(Size.data(), &file_s, sizeof(File.size()));
   //Combine 2 block to a entrie file_block
   vector<uint8_t> file_block = ablock_ss(user, pass);
-  file_block.insert(file_block.end(), Size.begin(), Size.end());
-  file_block.insert(file_block.end(), File.begin(), File.end());
+  file_block.insert(end(file_block), begin(Size), end(Size));
+  file_block.insert(end(file_block),begin(File), end(File));
 
   auto response = send_cmd(sd,pubkey, REQ_SET, file_block);
-  if(check_OK(response) == true){
+  if(check_err_crypto(response) == false){
     cout << RES_OK;
   }
 }
@@ -347,7 +366,7 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
 
   auto response = send_cmd(sd, pubkey, REQ_GET, msg);
   //Send response to file
-  if(check_OK(response) == true){
+  if(check_err_crypto(response) == false){
     cout << RES_OK;
     send_result_to_file(response, getname + ".file.dat");
   }
@@ -372,7 +391,7 @@ void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
 
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_ALL, msg);
-  if(check_OK(response) == true){
+  if(check_err_crypto(response) == false){
     cout << RES_OK;
     send_result_to_file(response, allfile);
   }
