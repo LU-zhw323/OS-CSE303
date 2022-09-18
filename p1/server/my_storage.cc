@@ -63,16 +63,15 @@ public:
     //Generate salt
     unsigned char* buf;
     vector<uint8_t> salt(LEN_SALT);
-    if(RAND_bytes(buf, LEN_SALT) == 1){
-      salt.assign(begin(buf),end(buf));
-    }
+    RAND_bytes(salt.data(), LEN_SALT);
+      
     //Add salt to authetable
     newUser.salt = salt;
     //Gnerate pass block
     vector<uint8_t> Pass;
     Pass.assign(begin(pass), end(pass));
     //Add salt block and pass block
-    vector<uin8_t> spblock;
+    vector<uint8_t> spblock;
     spblock.insert(end(spblock), begin(salt), end(salt));
     spblock.insert(end(spblock), begin(Pass), end(Pass));
     //Apply SHA_256 hashing, retrieved from https://qa.1r1g.com/sf/ask/964910411/
@@ -86,7 +85,7 @@ public:
     //Add content
     newUser.content = {};
     //Function on success
-    std::function<viod()> onsuccess = [](){cout << RES_OK;};
+    std::function<void()> onsuccess = [](){};
     //Insert newUser into table
     bool result = auth_table->insert(user, newUser, onsuccess);
     if(!result){
@@ -119,7 +118,7 @@ public:
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
       entry.content = content;
       auth_table->upsert(user, entry, [](){cout << "Insert successfully";}, [](){cout << "Update successfully";});
-    }
+    };
 
     bool result = auth_table->do_with(user, f);
     if(!result){
@@ -155,7 +154,7 @@ public:
     vector<uint8_t> content;
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
       content = entry.content;
-    }
+    };
     bool result = auth_table->do_with(user, f);
     if(!result){
       return {false, RES_ERR_LOGIN, {}};
@@ -192,13 +191,13 @@ public:
     }
 
     string names;
-    std::function<void(const string, const AuthTableEntry &)> f = [&](string name, AuthTableEntry &entry){
+    std::function<void(const string, const AuthTableEntry &)> f = [&](string name, AuthTableEntry){
       names.append(name);
       names.append("\n");
-    }
+    };
 
     auth_table->do_all_readonly(f, [](){});
-    return(true, RES_OK, {});
+    return{true, RES_OK,{}};
   }
 
   /// Authenticate a user
@@ -228,7 +227,7 @@ public:
       if(newPass_hash != entry.pass_hash){
         auth = false;
       }
-    }
+    };
     bool result = auth_table->do_with_readonly(user, f);
     //Check if we have this user
     if(result == false){
@@ -249,7 +248,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    
+    auth_table->clear();
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To

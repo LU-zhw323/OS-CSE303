@@ -30,7 +30,7 @@ public:
 
   /// Clear the map.  This operation needs to use 2pl
   virtual void clear() {
-    std::cout << "sequentialmap.h::clear() is not implemented\n";
+    entries.clear();
   }
 
   /// Insert the provided key/value pair only if there is no mapping for the key
@@ -47,14 +47,14 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p)
+      auto current_p = *(Entry_p);
       if(current_p.first == key){
-        return false
+        return false;
       }
-      Entry_p += 1;
+      Entry_p ++;
     }
     std::pair<K, V> new_pair = make_pair(key,val);
-    Entry_p.insert(end(Entry_p), new_pair);
+    entries.push_back(new_pair);
     on_success();
     return true;
   }
@@ -76,16 +76,16 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p)
+      auto current_p = *(Entry_p);
       if(current_p.first == key){
         current_p.second = val;
         on_upd();
         return false;
       }
-      Entry_p += 1;
+      Entry_p ++;
     }
     std::pair<K, V> new_pair = make_pair(key,val);
-    Entry_p.insert(end(Entry_p), new_pair);
+    entries.insert(end(entries), new_pair);
     on_ins();
     return true;
   }
@@ -103,12 +103,12 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p)
+      auto current_p = *(Entry_p);
       if(current_p.first == key){
         f(current_p.second);
         return true;
       }
-      Entry_p += 1;
+      Entry_p ++;
     }
     return false;
   }
@@ -126,12 +126,12 @@ public:
       auto Entry_p = entries.begin();
       //Go through the list to see if the key is already there
       while(Entry_p != entries.end()){
-        auto current_p = *(Entry_p)
+        auto current_p = *(Entry_p);
         if(current_p.first == key){
           f(current_p.second);
           return true;
         }
-        Entry_p += 1;
+        Entry_p ++;
       }
       return false;
   }
@@ -147,13 +147,13 @@ public:
       auto Entry_p = entries.begin();
       //Go through the list to see if the key is already there
       while(Entry_p != entries.end()){
-        auto current_p = *(Entry_p)
+        auto current_p = *(Entry_p);
         if(current_p.first == key){
           entries.erase(Entry_p);
           on_success();
           return true;
         }
-        Entry_p += 1;
+        Entry_p ++;
       }
       return false;
   }
@@ -170,9 +170,9 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p)
-      f(current_p.first,current_p.scend);
-      Entry_p += 1;
+      auto current_p = *(Entry_p);
+      f(current_p.first,current_p.second);
+      Entry_p ++;
     }
     then();
   }
