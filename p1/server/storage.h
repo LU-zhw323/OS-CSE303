@@ -45,6 +45,9 @@ public:
         data; // Optional additional content to return to the client
   };
 
+  
+  
+
   /// Destructor for the storage object.
   virtual ~Storage() {}
 

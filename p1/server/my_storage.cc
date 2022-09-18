@@ -6,6 +6,7 @@
 #include "../common/contextmanager.h"
 #include "../common/err.h"
 #include "../common/protocol.h"
+#include "../common/file.h"
 
 #include "authtableentry.h"
 #include "format.h"
@@ -14,7 +15,7 @@
 #include "storage.h"
 
 using namespace std;
-
+using std::begin, std::end;
 /// MyStorage is the student implementation of the Storage class
 class MyStorage : public Storage {
   /// The map of authentication information, indexed by username
@@ -44,6 +45,17 @@ public:
   /// Destructor for the storage object.
   virtual ~MyStorage() {}
 
+
+  //Helper function to take a vector and put its size into a vector<uint8_t>
+  ///@param v vector to get it size
+  ///@return a vector contain the size
+  vector<uint8_t> size_block(vector<uint8_t> block){
+    size_t size = block.size();
+    vector<uint8_t> sizeB(sizeof(size));
+    memcpy(sizeB.data(), &size, sizeof(size));
+    return sizeB;
+  }
+
   /// Create a new entry in the Auth table.  If the user already exists, return
   /// an error.  Otherwise, create a salt, hash the password, and then save an
   /// entry with the username, salt, hashed password, and a zero-byte content.
@@ -56,7 +68,6 @@ public:
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
     //Create a authetable of username and pass word
     AuthTableEntry newUser;
     newUser.username = user;
@@ -72,8 +83,9 @@ public:
     Pass.assign(begin(pass), end(pass));
     //Add salt block and pass block
     vector<uint8_t> spblock;
-    spblock.insert(end(spblock), begin(salt), end(salt));
     spblock.insert(end(spblock), begin(Pass), end(Pass));
+    spblock.insert(end(spblock), begin(salt), end(salt));
+    
     //Apply SHA_256 hashing, retrieved from https://qa.1r1g.com/sf/ask/964910411/
     vector<uint8_t> hashPass(SHA256_DIGEST_LENGTH);
     SHA256_CTX sha256;
@@ -108,14 +120,9 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-    //Firstly, check if user can log in
-    result_t login = auth(user, pass);
-    if(login.succeeded == false){
-      return{false, RES_ERR_LOGIN, {}};
-    }
 
     //Define function to update content
-    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
       entry.content = content;
       auth_table->upsert(user, entry, [](){cout << "Insert successfully";}, [](){cout << "Update successfully";});
     };
@@ -145,14 +152,10 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(who.length() > 0);
-    //Firstly, check if user can log in
-    result_t login = auth(user, pass);
-    if(login.succeeded == false){
-      return{false, RES_ERR_LOGIN, {}};
-    }
+    
     //Define the function to fetch content
     vector<uint8_t> content;
-    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry &entry){
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
       content = entry.content;
     };
     bool result = auth_table->do_with(user, f);
@@ -164,7 +167,7 @@ public:
         return {false, RES_ERR_NO_USER, {}};
       }
       else{
-        return {true, RES_OK, {}};
+        return {true, RES_OK, content};
       }
     }
 
@@ -183,21 +186,16 @@ public:
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
-    //Firstly, check if user can log in
-    result_t login = auth(user, pass);
-    if(login.succeeded == false){
-      return{false, RES_ERR_LOGIN, {}};
-    }
-
-    string names;
+    
+    //string names;
+    vector<uint8_t> names;
     std::function<void(const string, const AuthTableEntry &)> f = [&](string name, AuthTableEntry){
-      names.append(name);
-      names.append("\n");
+      names.insert(end(names), name.begin(), name.end());
+      names.push_back('\n');
     };
 
     auth_table->do_all_readonly(f, [](){});
-    return{true, RES_OK,{}};
+    return{true, RES_OK,names};
   }
 
   /// Authenticate a user
@@ -258,8 +256,58 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() {
-    cout << "my_storage.cc::save_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    const char* f_name = (filename + ".tmp").c_str();
+    //Open a file with above file name and open it as a binary file in write mode
+    FILE* sav = fopen(f_name,"wb");
+    //Define a function to read and write all username in table
+    std::function<void(const string, const AuthTableEntry &)> read_write = [&](string, AuthTableEntry entry){
+      vector<uint8_t> info;
+      //According to format, we need AUTHNTRY before anything
+      info.insert(end(info), AUTHENTRY.begin(), AUTHENTRY.end());
+
+      //Get size of user, put them into the info
+      vector<uint8_t> user(sizeof(entry.username));
+      user.assign(entry.username.begin(), entry.username.end());
+      vector<uint8_t> user_s = size_block(user);
+      info.insert(end(info), begin(user_s), end(user_s));
+      info.insert(end(info), begin(entry.username), end(entry.username));
+
+
+      //Get the size of salt, put them into info
+      vector<uint8_t> salt_size;
+      salt_size = size_block(entry.salt);
+      info.insert(end(info), begin(salt_size), end(salt_size));
+      info.insert(end(info), begin(entry.salt), end(entry.salt));
+
+      //Get Hasspass
+      vector<uint8_t> pass_s;
+      pass_s = size_block(entry.pass_hash);
+      info.insert(end(info), begin(pass_s), end(pass_s));
+      info.insert(end(info), begin(entry.pass_hash), end(entry.pass_hash));
+
+      //Get content
+      vector<uint8_t> content_s;
+      content_s = size_block(entry.content);
+      info.insert(end(info), begin(content_s), end(content_s));
+      if(content_s.size() > 0){
+        info.insert(end(info), begin(entry.content), end(entry.content));
+      }
+
+      //Binary write of some bytes of padding, to ensure that the next entry will  be aligned on an 8-byte boundary.
+      while(info.size( )% 8 != 0){
+        info.push_back('\0');
+      }
+      //Write the vector
+      fwrite(info.data(), info.size(), 1, sav);
+    };
+    //Call do_all_readonly
+    auth_table->do_all_readonly(read_write, [](){});
+
+    fclose(sav);
+
+    //replace the old file with the new one
+    rename((this->filename+".tmp").c_str(),this->filename.c_str());
+    return {true, RES_OK, {}};
   }
 
   /// Populate the Storage object by loading this.filename.  Note that load()
@@ -273,11 +321,96 @@ public:
     if (storage_file == nullptr) {
       return {true, "File not found: " + filename, {}};
     }
+    
+    //clear auth_table
+    auth_table->clear();
+    
+    //read the content of the file
+    vector<uint8_t> load = load_entire_file(this->filename);
+    
+    //Counter to record the position;
+    size_t counter = 0;
+    //Start looping and read information, each loop corresponding to one user
+    //Since length of username, password, salt, content are unknown, for loop won't help
+    while(counter<load.size()){
+      AuthTableEntry entry;
+      string user;
+      vector<uint8_t> salt;
+      vector<uint8_t> pass_hass;
+      vector<uint8_t> content;
 
-    cout << "my_storage.cc::load_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+      //Pointer of 1 byte in the vector
+      uint8_t* d = load.data();
+
+      //skip 8 bytes of constant AUTHAUTH
+      counter += 8;
+      //read the length of username
+      size_t user_size;
+      memcpy(&user_size, &load.at(counter), sizeof(size_t));
+      counter += 8;
+      //read username
+      vector<uint8_t> user_block;
+      for(int i = counter; i < counter + user_size; i++){
+        user_block.push_back(*(d+i));
+      }
+      user.assign(user_block.begin(), user_block.end());
+      entry.username = user;
+      counter += user_size;
+
+      //read length of salt
+      size_t salt_size;
+      memcpy(&salt_size, &load.at(counter), sizeof(size_t));
+      counter += 8;
+      //read salt
+      for(int i = counter; i < counter + salt_size; i++){
+        salt.push_back(*(d+i));
+      }
+      entry.salt = salt;
+      counter += salt_size;
+
+      //read length of password
+      size_t pass_size;
+      memcpy(&pass_size, &load.at(counter), sizeof(size_t));
+      counter += 8;
+      //read password
+      for(int i = counter; i < counter +pass_size; i++){
+        pass_hass.push_back(*(d+i));
+      }
+      entry.pass_hash = pass_hass;
+      counter += pass_size;
+
+      //read length of content
+      size_t content_size;
+      memcpy(&content_size, &load.at(counter), sizeof(size_t));
+      counter += 8;
+      //read content if size > 0
+      if(content_size > 0){
+        for(int i = counter; i < counter + content_size; i++){
+          content.push_back(*(d+i));
+        }
+        counter += content_size;
+        entry.content = content;
+      }
+      else{
+        entry.content = {};
+      }
+
+      //After reading, call insert()
+      auth_table->insert(entry.username,entry,[](){} );
+      
+      //read the bytes added to pad
+      while(counter % 8 != 0){
+        counter += 1;
+      }
+
+
+
+    }
+    return {true, "Loaded: "+filename, {}};
   }
+    
 };
+
 
 /// Create an empty Storage object and specify the file from which it should be
 /// loaded.  To avoid exceptions and errors in the constructor, the act of
