@@ -240,10 +240,12 @@ vector<uint8_t> send_cmd(int sd, RSA *pub, const string &cmd, const vector<uint8
   RSA_public_encrypt(LEN_RBLOCK_CONTENT, pre_rblock.data(), rblock.data(), pub, RSA_PKCS1_OAEP_PADDING);
 
   //Send both rblock and ablock to the server
-  //vector<uint8_t> request(rblock.size() + ablock.size());
-  //request.insert(end(request), begin(rblock), end(rblock));
-  //request.insert(end(request), begin(ablock), end(ablock));
-  //send_reliably(sd, request);
+  /*
+  vector<uint8_t> request;
+  request.insert(end(request), begin(rblock), end(rblock));
+  request.insert(end(request), begin(ablock), end(ablock));
+  send_reliably(sd, request);
+  */
   send_reliably(sd, rblock);
   send_reliably(sd, ablock);
   

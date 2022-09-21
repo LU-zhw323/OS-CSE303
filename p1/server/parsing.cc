@@ -107,7 +107,7 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
   vector<uint8_t> ablock(ablock_size);
   reliable_get_to_eof_or_n(sd, ablock.begin(), (int)ablock_size);
   /*
-  for(int i = (int)LEN_RKBLOCK; i < msg.size(); i++){
+  for(int i = (int)LEN_RKBLOCK; i < LEN_RKBLOCK + ablock_size; i++){
     ablock.push_back(*(mp+i));
   }
   */
