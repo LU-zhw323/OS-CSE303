@@ -195,8 +195,35 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
-
+  //Extract information from req
+  vector<string> info = Extract(req);
+  string user = info[0];
+  string pass = info[1];
+  string content = info[2];
   
+  
+
+  //Get specific username from the table
+  auto namelist = storage->get_user_data(user,pass,content);
+
+  //Check if we get the name
+  if(!namelist.succeeded){
+    //send back the error messages
+    send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
+    return false;
+  }
+
+  vector<uint8_t> response;
+  
+  //Get size of namelist
+  vector<uint8_t> data_size = size_block(namelist.data);
+
+  //Prepare out response
+  response.insert(end(response), RES_OK.begin(),RES_OK.end() );
+  response.insert(end(response), begin(data_size), end(data_size));
+  response.insert(end(response), begin(namelist.data), end(namelist.data));
+
+  send_reliably(sd, aes_crypt_msg(ctx, response));
   return false;
 }
 
@@ -216,6 +243,25 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+  //Extract information from req, we just need username and pass
+  vector<string> info = Extract(req);
+  string user = info[0];
+  string pass = info[1];
+  
+  
+
+  //Get all username from the table
+  auto namelist = storage->add_user(user, pass);
+
+  //Check if we get all name
+  if(!namelist.succeeded){
+    //send back the error messages
+    send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
+    return false;
+  }
+
+  
+  send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
   return false;
   
   
@@ -234,6 +280,9 @@ bool handle_key(int sd, const vector<uint8_t> &pubfile) {
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubfile.size() > 0);
+
+  //send pubfile 
+  send_reliably(sd, pubfile);
 
   return false;
 }
@@ -256,7 +305,22 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(ctx);
   assert(req.size() > 0);
   
-  return false;
+  //Extract information from req, we just need username and pass
+  vector<string> info = Extract(req);
+  string user = info[0];
+  string pass = info[1];
+
+  //Authorize user
+  auto aut = storage->auth(user, pass);
+  if(!aut.succeeded){
+    send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+    return false;
+  }
+
+  storage->shutdown();
+  send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+  return true;
+  
 }
 
 /// Respond to a SAV command by persisting the file, but only if the user
@@ -276,8 +340,19 @@ bool handle_sav(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+  //Extract information from req, we just need username and pass
+  vector<string> info = Extract(req);
+  string user = info[0];
+  string pass = info[1];
 
-  
-  
+  auto aut = storage->auth(user, pass);
+  if(!aut.succeeded){
+    send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+    return false;
+  }
+
+  auto sav = storage->save_file();
+  send_reliably(sd, aes_crypt_msg(ctx, sav.msg));
   return false;
+
 }

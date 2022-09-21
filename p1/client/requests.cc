@@ -70,8 +70,8 @@ bool check_err_crypto(const vector<uint8_t> &v){
 void send_result_to_file(const vector<uint8_t> &buf, const string &filename){
   size_t size_buf = buf.size();
   //According to piazza, buf is 8 bytes, plus "___OK___" 8 bytes = 16 bytes
-  if(size_buf > 16){
-    write_file(filename, buf, 16);
+  if(size_buf > (sizeof(RES_OK) + sizeof(size_t))){
+    write_file(filename, buf, (sizeof(RES_OK) + sizeof(size_t)));
   }
 }
 /// Create unencrypted ablock contents from one strings
