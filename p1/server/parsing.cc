@@ -123,10 +123,13 @@ bool parse_request(int sd, RSA *pri, const vector<uint8_t> &pub,
   reset_aes_context(ctx, aeskey, true);
 
   //handle the request
+  //Get the request list
   vector<string> req = {REQ_REG, REQ_BYE, REQ_SAV, REQ_SET, REQ_GET, REQ_ALL};
+  //Apply method mentioned in README.md
   decltype(handle_reg) *cmds[] = {handle_reg, handle_bye, handle_sav,
                                   handle_set, handle_get, handle_all};
-  for (size_t i = 0; i < req.size(); ++i)
+  //Call corresponding handle method by passing request, ctx content, and unencrypt ablock
+  for (size_t i = 0; i < req.size(); i++)
     if (cmd == req[i])
       return cmds[i](sd, storage, ctx, ori_ablock);
   //cannot find the cmd required
