@@ -13,9 +13,9 @@ using std::begin, std::end;
 //Helper function to extract username, password, and content from the unencrypted ablock in
 //order to pass them into the corresponding method in storage.cc
 ///@param ablock ablock that we received from parsing
-vector<string> Extract(const vector<uint8_t> ablock){
+vector<string> Extract(vector<uint8_t> ablock){
   //Iterator that points to the ablock
-  uint8_t* d = ablock.begin();
+  uint8_t* d = ablock.data();
   //Counter to count which bytes we are in
   size_t counter = 0;
   //Vector of string that we return
@@ -53,7 +53,7 @@ vector<string> Extract(const vector<uint8_t> ablock){
 
   //Get the content's size
   size_t content_size;
-  memcpy(&content_size, ablock.at(counter), sizeof(size_t));
+  memcpy(&content_size, &ablock.at(counter), sizeof(size_t));
   counter += 8;
   //Get the content
   string content;
@@ -120,7 +120,7 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   vector<uint8_t> response;
   
   //Get size of namelist
-  vector<uint8_t> data_size = size_block(response.data);
+  vector<uint8_t> data_size = size_block(namelist.data);
 
   //Prepare out response
   response.insert(end(response), begin(RES_OK), end(RES_OK));
@@ -181,12 +181,14 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_get() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+
+  
   return false;
 }
 
@@ -200,12 +202,14 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_reg() is not implemented\n";
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+  
+  
+  
   return false;
 }
 
@@ -217,10 +221,12 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 ///
 /// @return false, to indicate that the server shouldn't stop
 bool handle_key(int sd, const vector<uint8_t> &pubfile) {
-  cout << "responses.cc::handle_key() is not implemented\n";
+ 
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubfile.size() > 0);
+
+  
   return false;
 }
 
@@ -235,7 +241,7 @@ bool handle_key(int sd, const vector<uint8_t> &pubfile) {
 /// @return true, to indicate that the server should stop, or false on an error
 bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_bye() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
@@ -255,11 +261,13 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_sav(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  cout << "responses.cc::handle_sav() is not implemented\n";
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+
+  
   return false;
 }
