@@ -113,7 +113,11 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   string user = info[0];
   string pass = info[1];
   
-  
+  auto aut = storage->auth(user, pass);
+  if(!aut.succeeded){
+    send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+    return false;
+  }
 
   //Get all username from the table
   auto namelist = storage->get_all_users(user, pass);
@@ -156,11 +160,19 @@ bool handle_set(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(ctx);
   assert(req.size() > 0);
 
+  
+
   //Extract information from req
   vector<string> info = Extract(req);
   string user = info[0];
   string pass = info[1];
   string content = info[2];
+
+  auto aut = storage->auth(user, pass);
+  if(!aut.succeeded){
+    send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+    return false;
+  }
   
   //Handle too large profile file
   if(content.length() > LEN_PROFILE_FILE){
@@ -201,7 +213,11 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   string pass = info[1];
   string content = info[2];
   
-  
+  auto aut = storage->auth(user, pass);
+  if(!aut.succeeded){
+    send_reliably(sd, aes_crypt_msg(ctx, aut.msg));
+    return false;
+  }
 
   //Get specific username from the table
   auto namelist = storage->get_user_data(user,pass,content);
@@ -254,7 +270,7 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   auto namelist = storage->add_user(user, pass);
 
   //Check if we get all name
-  if(!namelist.succeeded){
+  if(namelist.succeeded == false){
     //send back the error messages
     send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
     return false;

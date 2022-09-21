@@ -61,6 +61,61 @@ bool check_err_crypto(const vector<uint8_t> &v){
 }
 
 
+/// Check if the provided result vector is a string representation of RES_ERR_USER_EXISTS
+///
+/// @param v The vector being compared to RES_ERR_USER_EXISTS
+///
+/// @returns true if the vector contents are RES_ERR_USER_EXISTS, false otherwise
+bool check_err_exist(const vector<uint8_t> &v){
+  std::string content = RES_ERR_USER_EXISTS;
+  vector<uint8_t> Error;
+  Error.assign(content.begin(), content.end());
+  for(int i = 0; i< Error.size(); i++){
+    if(Error[i] != v[i]){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// Check if the provided result vector is a string representation of RES_ERR_LOGIN
+///
+/// @param v The vector being compared to RES_ERR_LOGIN
+///
+/// @returns true if the vector contents are RES_ERR_LOGIN, false otherwise
+bool check_err_login(const vector<uint8_t> &v){
+  std::string content = RES_ERR_LOGIN;
+  vector<uint8_t> Error;
+  Error.assign(content.begin(), content.end());
+  for(int i = 0; i< Error.size(); i++){
+    if(Error[i] != v[i]){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/// Check if the provided result vector is a string representation of RES_ERR_LOGIN
+///
+/// @param v The vector being compared to RES_ERR_LOGIN
+///
+/// @returns true if the vector contents are RES_ERR_LOGIN, false otherwise
+bool check_err_no_data(const vector<uint8_t> &v){
+  std::string content = RES_ERR_NO_DATA;
+  vector<uint8_t> Error;
+  Error.assign(content.begin(), content.end());
+  for(int i = 0; i< Error.size(); i++){
+    if(Error[i] != v[i]){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+
 
 /// If a buffer consists of OKbbbbd+, where bbbb is a 4-byte binary integer
 /// and d+ is a string of characters, write the bytes (d+) to a file
@@ -70,8 +125,12 @@ bool check_err_crypto(const vector<uint8_t> &v){
 void send_result_to_file(const vector<uint8_t> &buf, const string &filename){
   size_t size_buf = buf.size();
   //According to piazza, buf is 8 bytes, plus "___OK___" 8 bytes = 16 bytes
-  if(size_buf > (sizeof(RES_OK) + sizeof(size_t))){
-    write_file(filename, buf, (sizeof(RES_OK) + sizeof(size_t)));
+  size_t skip;
+  size_t oksize = RES_OK.size();
+  size_t blocksize = 8;
+  skip = oksize + blocksize;
+  if(size_buf > skip){
+    write_file(filename, buf, skip);
   }
 }
 /// Create unencrypted ablock contents from one strings
@@ -258,7 +317,12 @@ void req_reg(int sd, RSA *pubkey, const string &user, const string &pass,
   }
   */
  if(check_err_crypto(response) == false){
-  cout << RES_OK;
+  if(check_err_exist(response) == true){
+    cout << RES_ERR_USER_EXISTS;
+  }
+  else{
+    cout << RES_OK;
+  }
  }
 
 
@@ -284,7 +348,12 @@ void req_bye(int sd, RSA *pubkey, const string &user, const string &pass,
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_BYE, msg);
   if(check_err_crypto(response) == false){
-    cout << RES_OK;
+    if(check_err_login(response) == true){
+      cout << RES_ERR_LOGIN;
+    }
+    else{
+      cout << RES_OK;
+    }
   }
 
 
@@ -308,7 +377,12 @@ void req_sav(int sd, RSA *pubkey, const string &user, const string &pass,
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_SAV, msg);
   if(check_err_crypto(response) == false){
-    cout << RES_OK;
+    if(check_err_login(response) == true){
+      cout << RES_ERR_LOGIN;
+    }
+    else{
+      cout << RES_OK;
+    }
   }
 }
 
@@ -341,7 +415,15 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
 
   auto response = send_cmd(sd,pubkey, REQ_SET, file_block);
   if(check_err_crypto(response) == false){
-    cout << RES_OK;
+    if(check_err_login(response) == true){
+      cout << RES_ERR_LOGIN;
+    }
+    else if(check_err_no_data(response) == true){
+      cout << RES_ERR_NO_DATA;
+    }
+    else{
+      cout << RES_OK;
+    }
   }
 }
 
@@ -371,9 +453,18 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
   auto response = send_cmd(sd, pubkey, REQ_GET, msg);
   //Send response to file
   if(check_err_crypto(response) == false){
-    cout << RES_OK;
-    send_result_to_file(response, getname + ".file.dat");
+    if(check_err_login(response) == true){
+      cout << RES_ERR_LOGIN;
+    }
+    else if(check_err_no_data(response) == true){
+      cout << RES_ERR_NO_DATA;
+    }
+    else{
+      cout << RES_OK;
+      send_result_to_file(response, getname + ".file.dat");
+    }
   }
+
 }
 
 /// req_all() sends the ALL command to get a listing of all users, formatted
@@ -396,8 +487,13 @@ void req_all(int sd, RSA *pubkey, const string &user, const string &pass,
   vector<uint8_t> msg = ablock_ss(user,pass);
   auto response = send_cmd(sd, pubkey, REQ_ALL, msg);
   if(check_err_crypto(response) == false){
-    cout << RES_OK;
-    send_result_to_file(response, allfile);
+    if(check_err_login(response) == true){
+      cout << RES_ERR_LOGIN;
+    }
+    else{
+      cout << RES_OK;
+      send_result_to_file(response, allfile);
+    }
   }
 
 }
