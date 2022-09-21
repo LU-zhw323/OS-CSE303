@@ -24,11 +24,11 @@ vector<string> Extract(vector<uint8_t> ablock){
 
   //Get the username's size
   size_t user_size;
-  memcpy(&user_size, &ablock.at(counter), sizeof(size_t));
+  memcpy(&user_size, &ablock[counter], sizeof(size_t));
   //Reset counter after username's size
-  counter = counter + 8;
+  counter += 8;
   //Get username
-  string user;
+  string user ="";
   vector<uint8_t> user_b;
   for(int i = counter; i < counter + user_size; i++){
     user_b.push_back(*(d+i));
@@ -39,10 +39,10 @@ vector<string> Extract(vector<uint8_t> ablock){
 
   //Get the password's size
   size_t pass_size;
-  memcpy(&pass_size, &ablock.at(counter), sizeof(size_t));
+  memcpy(&pass_size, &ablock[counter], sizeof(size_t));
   counter += 8;
   //Get password
-  string pass;
+  string pass= "";
   vector<uint8_t> pass_b;
   for(int i = counter; i < counter + pass_size; i++){
     pass_b.push_back(*(d+i));
@@ -50,25 +50,32 @@ vector<string> Extract(vector<uint8_t> ablock){
   pass.assign(pass_b.begin(), pass_b.end());
   counter += pass_size;
 
-
-  //Get the content's size
-  size_t content_size;
-  memcpy(&content_size, &ablock.at(counter), sizeof(size_t));
-  counter += 8;
-  //Get the content
-  string content;
-  vector<uint8_t> content_b;
-  if(content_size != 0){
-    for(int i = counter; i < counter + content_size; i++){
-      content_b.push_back(*(d+i));
-    }
-    content.assign(content_b.begin(), content_b.end());
-  }
-
-  //Return what we extracted
+  //Push back username and pass
   info.push_back(user);
   info.push_back(pass);
-  info.push_back(content);
+
+  //Check we have content to read
+  if(ablock.size() > counter){
+    //Get the content's size
+    size_t content_size;
+    memcpy(&content_size, &ablock[counter], sizeof(size_t));
+    counter += 8;
+    //Get the content
+    string content= "";
+    vector<uint8_t> content_b;
+    if(content_size != 0){
+      for(int i = counter; i < counter + content_size; i++){
+        content_b.push_back(*(d+i));
+      }
+      content.assign(content_b.begin(), content_b.end());
+      info.push_back(content);
+    }
+  }
+  
+ 
+  //Return what we extracted
+  
+  
   return info;
 }
 
@@ -101,11 +108,11 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(ctx);
   assert(req.size() > 0);
 
-  //Extract information from req
+  //Extract information from req, we just need username and pass
   vector<string> info = Extract(req);
   string user = info[0];
   string pass = info[1];
-  string content = info[2];
+  
   
 
   //Get all username from the table
@@ -115,6 +122,7 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   if(!namelist.succeeded){
     //send back the error messages
     send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
+    return false;
   }
 
   vector<uint8_t> response;
@@ -123,7 +131,7 @@ bool handle_all(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   vector<uint8_t> data_size = size_block(namelist.data);
 
   //Prepare out response
-  response.insert(end(response), begin(RES_OK), end(RES_OK));
+  response.insert(end(response), RES_OK.begin(),RES_OK.end() );
   response.insert(end(response), begin(data_size), end(data_size));
   response.insert(end(response), begin(namelist.data), end(namelist.data));
 
@@ -202,16 +210,18 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
+  
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
-  
-  
-  
   return false;
-}
+  
+  
+  }
+  
+  
 
 /// In response to a request for a key, do a reliable send of the contents of
 /// the pubfile
@@ -221,12 +231,10 @@ bool handle_reg(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 ///
 /// @return false, to indicate that the server shouldn't stop
 bool handle_key(int sd, const vector<uint8_t> &pubfile) {
- 
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(pubfile.size() > 0);
 
-  
   return false;
 }
 
@@ -247,6 +255,7 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
+  
   return false;
 }
 
@@ -261,13 +270,14 @@ bool handle_bye(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 /// @return false, to indicate that the server shouldn't stop
 bool handle_sav(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
                 const vector<uint8_t> &req) {
-  
+ 
   // NB: These asserts are to prevent compiler warnings
   assert(sd);
   assert(storage);
   assert(ctx);
   assert(req.size() > 0);
 
+  
   
   return false;
 }
