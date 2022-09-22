@@ -124,7 +124,7 @@ public:
     //Define function to update content
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
       entry.content = content;
-      auth_table->upsert(user, entry, [](){cout << "Insert successfully";}, [](){cout << "Update successfully";});
+      //auth_table->upsert(user, entry, [](){}, [](){});
     };
 
     bool result = auth_table->do_with(user, f);
@@ -169,7 +169,7 @@ public:
     }
     else{
       if(content.begin() == content.end()){
-        return {false, RES_ERR_NO_USER, {}};
+        return {false, RES_ERR_NO_DATA, {}};
       }
       else{
         return {true, RES_OK, content};
