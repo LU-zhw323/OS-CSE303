@@ -156,14 +156,19 @@ public:
     //Define the function to fetch content
     vector<uint8_t> content;
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
-      content = entry.content;
+      content.insert(end(content), entry.content.begin(), entry.content.end());
     };
-    bool result = auth_table->do_with(user, f);
+    bool result = auth_table->do_with(who, f);
     if(!result){
-      return {false, RES_ERR_LOGIN, {}};
+      if(content.begin() == content.end()){
+        return {false, RES_ERR_NO_DATA, {}};
+      }
+      else{
+        return {false, RES_ERR_NO_USER, {}};
+      }
     }
     else{
-      if(content.empty()){
+      if(content.begin() == content.end()){
         return {false, RES_ERR_NO_USER, {}};
       }
       else{
@@ -223,6 +228,7 @@ public:
       SHA256_Final(newPass_hash.data(), &sha256);
       //Check if the pass_hash in table is same as the input pass_hash
       if(newPass_hash != entry.pass_hash){
+        //Since [&] will capture all variable, we can use it to assign auth
         auth = false;
       }
     };

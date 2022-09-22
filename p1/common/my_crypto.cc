@@ -39,6 +39,7 @@ vector<uint8_t> aes_crypt_msg(EVP_CIPHER_CTX *ctx, const unsigned char *start,
   
   // Set up a buffer where AES puts crypted bits. 
   //The output buffer length should at least be EVP_CIPHER_block_size() byte longer then the input length
+  //So the size of out-put buffer should be Maximum length of user profile + cipher_block_size
   unsigned char out_buf[LEN_PROFILE_FILE + cipher_block_size];
   int out_len;
   
@@ -48,8 +49,9 @@ vector<uint8_t> aes_crypt_msg(EVP_CIPHER_CTX *ctx, const unsigned char *start,
           ERR_error_string(ERR_get_error(), nullptr));
     return {};
   }
-  encry_msg.insert(end(encry_msg), out_buf, out_buf + out_len);
-  
+  for(int i = 0; i < out_len ; i++){
+    encry_msg.push_back(*(uint8_t*)(out_buf + i));
+  }
     
   // crypt the last block
   if (!EVP_CipherFinal_ex(ctx, out_buf, &out_len)) {
@@ -57,7 +59,9 @@ vector<uint8_t> aes_crypt_msg(EVP_CIPHER_CTX *ctx, const unsigned char *start,
           ERR_error_string(ERR_get_error(), nullptr));
   return {};
 }
-  encry_msg.insert(end(encry_msg), out_buf, out_buf + out_len);
+  for(int i = 0; i < out_len ; i++){
+    encry_msg.push_back(*(uint8_t*)(out_buf + i));
+  }
 
 
   return encry_msg;
