@@ -224,13 +224,13 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
 
   
   //Check if we get the name
-  /*
+  
   if(namelist.succeeded == false){
     //send back the error messages
     send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
     return false;
   }
-  */
+  
   
   vector<uint8_t> response;
   
