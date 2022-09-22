@@ -76,9 +76,9 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p);
-      if(current_p.first == key){
-        current_p.second = val;
+      
+      if(Entry_p->first == key){
+        Entry_p->second = val;
         on_upd();
         return false;
       }
@@ -103,9 +103,9 @@ public:
     auto Entry_p = entries.begin();
     //Go through the list to see if the key is already there
     while(Entry_p != entries.end()){
-      auto current_p = *(Entry_p);
-      if(current_p.first == key){
-        f(current_p.second);
+      
+      if(Entry_p->first == key){
+        f(Entry_p->second);
         return true;
       }
       Entry_p ++;
