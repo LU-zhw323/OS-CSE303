@@ -408,8 +408,8 @@ void req_set(int sd, RSA *pubkey, const string &user, const string &pass,
   vector<uint8_t> File = load_entire_file(setfile);
   //Take the size of file->Size block
   size_t file_s = File.size();
-  vector<uint8_t> Size (sizeof(File.size()));
-  memcpy(Size.data(), &file_s, sizeof(File.size()));
+  vector<uint8_t> Size (sizeof(file_s));
+  memcpy(Size.data(), &file_s, sizeof(file_s));
   //Combine 2 block to a entrie file_block
   vector<uint8_t> file_block = ablock_ss(user, pass);
   file_block.insert(end(file_block), begin(Size), end(Size));
@@ -458,12 +458,17 @@ void req_get(int sd, RSA *pubkey, const string &user, const string &pass,
     if(check_err_login(response) == true){
       cout << RES_ERR_LOGIN;
     }
+    
     else if(check_err_no_data(response) == true){
       cout << RES_ERR_NO_DATA;
+      //send_result_to_file(response, getname + ".file.dat");
+
     }
+    
     else{
       cout << RES_OK;
-      send_result_to_file(response, getname + ".file.dat");
+      const string filename = getname + ".file.dat";
+      send_result_to_file(response, filename);
     }
   }
 

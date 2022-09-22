@@ -222,20 +222,23 @@ bool handle_get(int sd, Storage *storage, EVP_CIPHER_CTX *ctx,
   //Get specific username from the table
   auto namelist = storage->get_user_data(user,pass,content);
 
+  
   //Check if we get the name
+  /*
   if(namelist.succeeded == false){
     //send back the error messages
     send_reliably(sd, aes_crypt_msg(ctx, namelist.msg));
     return false;
   }
-
+  */
+  
   vector<uint8_t> response;
   
   //Get size of namelist
   vector<uint8_t> data_size = size_block(namelist.data);
 
   //Prepare out response
-  response.insert(end(response), RES_OK.begin(),RES_OK.end() );
+  response.insert(end(response), begin(namelist.msg),begin(namelist.msg));
   response.insert(end(response), begin(data_size), end(data_size));
   response.insert(end(response), begin(namelist.data), end(namelist.data));
 

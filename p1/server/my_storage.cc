@@ -120,20 +120,55 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-
+    /*
     //Define function to update content
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
       entry.content = content;
       //auth_table->upsert(user, entry, [](){}, [](){});
     };
+    */
+   //Create a authetable of username and pass word
+    AuthTableEntry newUser;
+    newUser.username = user;
+    //Generate salt
+    unsigned char* buf;
+    vector<uint8_t> salt(LEN_SALT);
+    RAND_bytes(salt.data(), LEN_SALT);
+      
+    //Add salt to authetable
+    newUser.salt = salt;
+    //Gnerate pass block
+    vector<uint8_t> Pass;
+    Pass.assign(begin(pass), end(pass));
+    //Add salt block and pass block
+    vector<uint8_t> spblock;
+    spblock.insert(end(spblock), begin(Pass), end(Pass));
+    spblock.insert(end(spblock), begin(salt), end(salt));
+    
+    //Apply SHA_256 hashing, retrieved from https://qa.1r1g.com/sf/ask/964910411/
+    vector<uint8_t> hashPass(SHA256_DIGEST_LENGTH);
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, spblock.data(), spblock.size());
+    SHA256_Final(hashPass.data(), &sha256);
+    //Add hashpass
+    newUser.pass_hash = hashPass;
+    //Add content
+    newUser.content = content;
 
-    bool result = auth_table->do_with(user, f);
+    bool result = auth_table->upsert(user, newUser, [](){}, [](){});
+
+
+    //bool result = auth_table->do_with(user, f);
+    /*
     if(!result){
       return {false, RES_ERR_UNIMPLEMENTED, {}};
     }
     else{
       return {true, RES_OK, {}};
     }
+    */
+   return {true, RES_OK, {}};
 
   }
 
@@ -152,7 +187,6 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(who.length() > 0);
-    
     //Define the function to fetch content
     vector<uint8_t> content;
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
@@ -160,16 +194,11 @@ public:
     };
     bool result = auth_table->do_with(who, f);
     if(!result){
-      if(content.begin() == content.end()){
-        return {false, RES_ERR_NO_DATA, {}};
-      }
-      else{
-        return {false, RES_ERR_NO_USER, {}};
-      }
+      return {false, RES_ERR_NO_USER, {}};
     }
     else{
       if(content.begin() == content.end()){
-        return {false, RES_ERR_NO_DATA, {}};
+        return {false, RES_ERR_NO_DATA, content};
       }
       else{
         return {true, RES_OK, content};
