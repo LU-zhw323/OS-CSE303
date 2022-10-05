@@ -143,7 +143,7 @@ public:
       }
       iter ++;
     }
-    //Insert new key/val pair
+
     //Insert new key/value pair
     target_bucket->pairs.push_back(make_pair(key, val));
     on_ins();
@@ -239,6 +239,20 @@ public:
   ///             useful for 2pl
   virtual void do_all_readonly(std::function<void(const K, const V &)> f,
                                std::function<void()> then) {
-    std::cout << "ConcurrentHashMap::do_all_readonly() is not implemented";
+    auto bucket_iter = kvstore.begin();
+    while(bucket_iter != kvstore.end()){
+      bucket* current_buck = (*bucket_iter);
+      current_buck->Lock.lock();
+      auto pair_iter = current_buck->pairs.begin();
+      while(pair_iter != current_buck->pairs.end()){
+        f((*pair_iter).first,(*pair_iter).second);
+        pair_iter ++;
+      }
+      if(bucket_iter+1 == kvstore.end()){
+        then();
+      }
+      bucket_iter ++;
+      current_buck->Lock.unlock();
+    }
   }
 };
