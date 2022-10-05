@@ -5,16 +5,19 @@
 #include <openssl/rand.h>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "../common/contextmanager.h"
 #include "../common/err.h"
 #include "../common/protocol.h"
+#include "../common/file.h"
 
 #include "authtableentry.h"
 #include "format.h"
 #include "map.h"
 #include "map_factories.h"
 #include "storage.h"
+
 
 using namespace std;
 
@@ -252,13 +255,25 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_insert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
-    cout << "my_storage.cc::kv_insert() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Insert key/value
+    bool result = kv_store->insert(key,val, [](){});
+    if(!result){
+      return{false, RES_ERR_KEY, {}};
+    }
+    else{
+      return{true, RES_OK, {}};
+    }
+
   };
 
   /// Get a copy of the value to which a key is mapped
@@ -270,12 +285,16 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_get(const string &user, const string &pass,
                           const string &key) {
-    cout << "my_storage.cc::kv_get() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+   //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //
   };
 
   /// Delete a key/value mapping

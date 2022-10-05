@@ -41,6 +41,7 @@
         "condition_variable": "cpp",
         "list": "cpp",
         "mutex": "cpp",
-        "ratio": "cpp"
+        "ratio": "cpp",
+        "deque": "cpp"
     }
 }
