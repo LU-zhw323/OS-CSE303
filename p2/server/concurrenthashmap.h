@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "map.h"
+using namespace std;
+using std::begin, std::end;
 
 /// ConcurrentHashMap is a concurrent implementation of the Map interface (a
 /// Key/Value store).  It is implemented as a vector of buckets, with one lock
@@ -31,22 +33,55 @@
 /// @param V The type of the values in this map
 template <typename K, typename V> class ConcurrentHashMap : public Map<K, V> {
 
+//Create bucket struct
+struct bucket{
+  list<pair<K,V>> pairs;    //List of key/value pairs
+  mutex Lock;               //Lock per bucket
+};
+//Vector of buckets
+vector<bucket*> kvstore;
+
+
+
+
 public:
+
+
+
+  ///Helper function to find the position of key in the kvstore by std::hash
+  ///@param key The key that we need to find its position in the hash table
+  ///
+  ///@return The poistion of the key value in the table
+  int prehash(K key){
+    size_t hsh = hash<K>()(key);
+    int prehash = (int) hsh%kvstore.size();
+    return prehash;
+  }
+
+
   /// Construct by specifying the number of buckets it should have
   ///
   /// @param _buckets The number of buckets
-  ConcurrentHashMap(size_t) {
-    std::cout << "ConcurrentHashMap::ConcurrentHashMap() is not implemented";
+  ConcurrentHashMap(size_t _buckets) {
+    //Push back buckets to entries til size = _buckets
+    while(kvstore.size() < _buckets){
+      kvstore.push_back(new bucket());
+    }
   }
 
   /// Destruct the ConcurrentHashMap
   virtual ~ConcurrentHashMap() {
-    std::cout << "ConcurrentHashMap::~ConcurrentHashMap() is not implemented";
+    kvstore.clear();
   }
 
   /// Clear the map.  This operation needs to use 2pl
   virtual void clear() {
-    std::cout << "ConcurrentHashMap::clear() is not implemented";
+    for(int i = 0; i < kvstore.size(); i++){
+      //Perform 2PL to lock all buckets
+      const lock_guard<mutex> guard(kvstore[i]->Lock);
+      kvstore[i]->pairs.clear();
+    }
+
   }
 
   /// Insert the provided key/value pair only if there is no mapping for the key
@@ -59,8 +94,22 @@ public:
   /// @return true if the key/value was inserted, false if the key already
   ///         existed in the table
   virtual bool insert(K key, V val, std::function<void()> on_success) {
-    std::cout << "ConcurrentHashMap::insert() is not implemented";
-    return false;
+    //Prehash to find the position of the key
+    int position = prehash(key);
+    //Acquire lock on specific bucket
+    const lock_guard<mutex> guard(kvstore[position]->Lock);
+    //Find if key exists
+    size_t size_pairs = kvstore[position]->pairs.size();
+    auto target_bucket = kvstore[position];
+    for(int i = 0; i < size_pairs; i++){
+      if(target_bucket->pairs[i].first == key){
+        return false; //lock_guard will unlock
+      }
+    }
+    //Insert new key/value pair
+    target_bucket->pairs.push_back(make_pair(key, val));
+    on_success();
+    return true; //lock_guard will unlock
   }
 
   /// Insert the provided key/value pair if there is no mapping for the key yet.
@@ -76,8 +125,26 @@ public:
   ///         existed in the table and was thus updated instead
   virtual bool upsert(K key, V val, std::function<void()> on_ins,
                       std::function<void()> on_upd) {
-    std::cout << "ConcurrentHashMap::upsert() is not implemented";
-    return false;
+    //Prehash to find the position of the key
+    int position = prehash(key);
+    //Acquire lock on specific bucket
+    const lock_guard<mutex> guard(kvstore[position]->Lock);
+    //Find if key exists, and set val
+    size_t size_pairs = kvstore[position]->pairs.size();
+    auto target_bucket = kvstore[position];
+    for(int i = 0; i < size_pairs; i++){
+      if(target_bucket->pairs[i].first == key){
+        target_bucket->pairs[i].second = val;
+        on_upd();
+        return false; //lock_guard unlock
+      }
+    }
+    //Insert new key/val pair
+    //Insert new key/value pair
+    target_bucket->pairs.push_back(make_pair(key, val));
+    on_ins();
+    return true; //lock_guard will unlock
+
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -89,8 +156,20 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with(K key, std::function<void(V &)> f) {
-    std::cout << "ConcurrentHashMap::do_with() is not implemented";
-    return false;
+    //Prehash to find the position of the key
+    int position = prehash(key);
+    //Acquire lock on specific bucket
+    const lock_guard<mutex> guard(kvstore[position]->Lock);
+    //Find if key exists, and set val
+    size_t size_pairs = kvstore[position]->pairs.size();
+    auto target_bucket = kvstore[position];
+    for(int i = 0; i < size_pairs; i++){
+      if(target_bucket->pairs[i].first == key){
+        f(target_bucket->pairs[i].second);
+        return true; //lock_guard unlock
+      }
+    }
+    return false; //lock_guard unlock
   }
 
   /// Apply a function to the value associated with a given key.  The function
@@ -102,8 +181,20 @@ public:
   /// @return true if the key existed and the function was applied, false
   ///         otherwise
   virtual bool do_with_readonly(K key, std::function<void(const V &)> f) {
-    std::cout << "ConcurrentHashMap::do_with_readonly() is not implemented";
-    return false;
+    //Prehash to find the position of the key
+    int position = prehash(key);
+    //Acquire lock on specific bucket
+    const lock_guard<mutex> guard(kvstore[position]->Lock);
+    //Find if key exists, and set val
+    size_t size_pairs = kvstore[position]->pairs.size();
+    auto target_bucket = kvstore[position];
+    for(int i = 0; i < size_pairs; i++){
+      if(target_bucket->pairs[i].first == key){
+        f(target_bucket->pairs[i].second);
+        return true; //lock_guard unlock
+      }
+    }
+    return false; //lock_guard unlock
   }
 
   /// Remove the mapping from a key to its value
@@ -113,8 +204,20 @@ public:
   ///
   /// @return true if the key was found and the value unmapped, false otherwise
   virtual bool remove(K key, std::function<void()> on_success) {
-    std::cout << "ConcurrentHashMap::remove() is not implemented";
-    return false;
+     //Prehash to find the position of the key
+    int position = prehash(key);
+    //Acquire lock on specific bucket
+    const lock_guard<mutex> guard(kvstore[position]->Lock);
+    //Find if key exists, and set val
+    size_t size_pairs = kvstore[position]->pairs.size();
+    auto target_bucket = kvstore[position];
+    for(int i = 0; i < size_pairs; i++){
+      if(target_bucket->pairs[i].first == key){
+        target_bucket->pairs.erase(target_bucket->pairs[i]);
+        return true; //lock_guard unlock
+      }
+    }
+    return false; //lock_guard unlock
   }
 
   /// Apply a function to every key/value pair in the map.  Note that the
