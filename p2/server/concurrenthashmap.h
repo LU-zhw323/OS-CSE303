@@ -101,10 +101,12 @@ public:
     //Find if key exists
     size_t size_pairs = kvstore[position]->pairs.size();
     auto target_bucket = kvstore[position];
-    for(int i = 0; i < size_pairs; i++){
-      if(target_bucket->pairs[i].first == key){
-        return false; //lock_guard will unlock
+    auto iter = kvstore[position]->pairs.begin();
+    while(iter != kvstore[position]->pairs.end()){
+      if((*iter).first == key){
+        return false; //lock_guard unlock
       }
+      iter ++;
     }
     //Insert new key/value pair
     target_bucket->pairs.push_back(make_pair(key, val));
@@ -132,12 +134,14 @@ public:
     //Find if key exists, and set val
     size_t size_pairs = kvstore[position]->pairs.size();
     auto target_bucket = kvstore[position];
-    for(int i = 0; i < size_pairs; i++){
-      if(target_bucket->pairs[i].first == key){
-        target_bucket->pairs[i].second = val;
+    auto iter = kvstore[position]->pairs.begin();
+    while(iter != kvstore[position]->pairs.end()){
+      if((*iter).first == key){
+        (*iter).second = val;
         on_upd();
-        return false; //lock_guard unlock
+        return false; //lock guard unlock
       }
+      iter ++;
     }
     //Insert new key/val pair
     //Insert new key/value pair
@@ -163,11 +167,13 @@ public:
     //Find if key exists, and set val
     size_t size_pairs = kvstore[position]->pairs.size();
     auto target_bucket = kvstore[position];
-    for(int i = 0; i < size_pairs; i++){
-      if(target_bucket->pairs[i].first == key){
-        f(target_bucket->pairs[i].second);
+    auto iter = kvstore[position]->pairs.begin();
+    while(iter != kvstore[position]->pairs.end()){
+      if((*iter).first == key){
+        f((*iter).second);
         return true; //lock_guard unlock
       }
+      iter ++;
     }
     return false; //lock_guard unlock
   }
@@ -188,11 +194,13 @@ public:
     //Find if key exists, and set val
     size_t size_pairs = kvstore[position]->pairs.size();
     auto target_bucket = kvstore[position];
-    for(int i = 0; i < size_pairs; i++){
-      if(target_bucket->pairs[i].first == key){
-        f(target_bucket->pairs[i].second);
+    auto iter = kvstore[position]->pairs.begin();
+    while(iter != kvstore[position]->pairs.end()){
+      if((*iter).first == key){
+        f((*iter).second);
         return true; //lock_guard unlock
       }
+      iter ++;
     }
     return false; //lock_guard unlock
   }
@@ -211,11 +219,14 @@ public:
     //Find if key exists, and set val
     size_t size_pairs = kvstore[position]->pairs.size();
     auto target_bucket = kvstore[position];
-    for(int i = 0; i < size_pairs; i++){
-      if(target_bucket->pairs[i].first == key){
-        target_bucket->pairs.erase(target_bucket->pairs[i]);
+    auto iter = kvstore[position]->pairs.begin();
+    while(iter != kvstore[position]->pairs.end()){
+      if((*iter).first == key){
+        target_bucket->pairs.erase(iter);
+        on_success();
         return true; //lock_guard unlock
       }
+      iter ++;
     }
     return false; //lock_guard unlock
   }
