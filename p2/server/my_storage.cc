@@ -51,6 +51,16 @@ public:
   /// Destructor for the storage object.
   virtual ~MyStorage() {}
 
+  //Helper function to take a vector and put its size into a vector<uint8_t>
+  ///@param v vector to get it size
+  ///@return a vector contain the size
+  vector<uint8_t> size_block(vector<uint8_t> block){
+    size_t size = block.size();
+    vector<uint8_t> sizeB(sizeof(size));
+    memcpy(sizeB.data(), &size, sizeof(size));
+    return sizeB;
+  }
+
   /// Create a new entry in the Auth table.  If the user already exists, return
   /// an error.  Otherwise, create a salt, hash the password, and then save an
   /// entry with the username, salt, hashed password, and a zero-byte content.
@@ -60,11 +70,45 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t add_user(const string &user, const string &pass) {
-    cout << "my_storage.cc::add_user() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Create a authetable of username and pass word
+    AuthTableEntry newUser;
+    newUser.username = user;
+    //Generate salt
+    unsigned char* buf;
+    vector<uint8_t> salt(LEN_SALT);
+    RAND_bytes(salt.data(), LEN_SALT);
+      
+    //Add salt to authetable
+    newUser.salt = salt;
+    //Gnerate pass block
+    vector<uint8_t> Pass;
+    Pass.assign(begin(pass), end(pass));
+    //Add salt block and pass block
+    vector<uint8_t> spblock;
+    spblock.insert(end(spblock), begin(Pass), end(Pass));
+    spblock.insert(end(spblock), begin(salt), end(salt));
+    
+    //Apply SHA_256 hashing, retrieved from https://qa.1r1g.com/sf/ask/964910411/
+    vector<uint8_t> hashPass(SHA256_DIGEST_LENGTH);
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, spblock.data(), spblock.size());
+    SHA256_Final(hashPass.data(), &sha256);
+    //Add hashpass
+    newUser.pass_hash = hashPass;
+    //Add content
+    newUser.content = {};
+    //Function on success
+    std::function<void()> onsuccess = [](){};
+    //Insert newUser into table
+    bool result = auth_table->insert(user, newUser, onsuccess);
+    if(!result){
+      return {false, RES_ERR_USER_EXISTS, {}};
+    }
+    return {true, RES_OK, {}};
   }
 
   /// Set the data bytes for a user, but do so if and only if the password
@@ -77,12 +121,24 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t set_user_data(const string &user, const string &pass,
                                  const vector<uint8_t> &content) {
-    cout << "my_storage.cc::set_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    
+    //Define function to update content
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
+      entry.content = content;
+      auth_table->upsert(user, entry, [](){}, [](){});
+    };
+    //Create a authetable of username and pass word
+    bool result = auth_table->do_with(user, f);
+    if(!result){
+      return {false, RES_ERR_SERVER, {}};
+    }
+    else{
+      return {true, RES_OK, {}};
+    }
   }
 
   /// Return a copy of the user data for a user, but do so only if the password
@@ -96,12 +152,27 @@ public:
   ///         an error
   virtual result_t get_user_data(const string &user, const string &pass,
                                  const string &who) {
-    cout << "my_storage.cc::get_user_data() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(who.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Define the function to fetch content
+    vector<uint8_t> content;
+    std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
+      content.insert(end(content), entry.content.begin(), entry.content.end());
+    };
+    bool result = auth_table->do_with(who, f);
+    if(!result){
+      return {false, RES_ERR_NO_USER, {}};
+    }
+    else{
+      if(content.begin() == content.end()){
+        return {false, RES_ERR_NO_DATA, content};
+      }
+      else{
+        return {true, RES_OK, content};
+      }
+    }
   }
 
   /// Return a newline-delimited string containing all of the usernames in the
@@ -112,11 +183,19 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t get_all_users(const string &user, const string &pass) {
-    cout << "my_storage.cc::get_all_users() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    
+    //string names;
+    vector<uint8_t> names;
+    std::function<void(const string, const AuthTableEntry &)> f = [&](string name, AuthTableEntry){
+      names.insert(end(names), name.begin(), name.end());
+      names.push_back('\n');
+    };
+
+    auth_table->do_all_readonly(f, [](){});
+    return{true, RES_OK,names};
   }
 
   /// Authenticate a user
@@ -126,11 +205,41 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t auth(const string &user, const string &pass) {
-    cout << "my_storage.cc::auth() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    bool auth = true;
+    //Define a function(lambada) to do the authenticate
+    std::function<void(const AuthTableEntry &)> f = [&](AuthTableEntry entry){
+      //Get the password with salt in entry, cause salt will be used to authenticate
+      vector<uint8_t> newPass;
+      newPass.insert(end(newPass), begin(pass), end(pass));
+      newPass.insert(end(newPass), begin(entry.salt), end(entry.salt));
+
+      vector<uint8_t> newPass_hash(LEN_PASSHASH);
+      SHA256_CTX sha256;
+      SHA256_Init(&sha256);
+      SHA256_Update(&sha256, newPass.data(), newPass.size());
+      SHA256_Final(newPass_hash.data(), &sha256);
+      //Check if the pass_hash in table is same as the input pass_hash
+      if(newPass_hash != entry.pass_hash){
+        //Since [&] will capture all variable, we can use it to assign auth
+        auth = false;
+      }
+    };
+    bool result = auth_table->do_with_readonly(user, f);
+    //Check if we have this user
+    if(result == false){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    else{//check if the password is correct
+      if(auth == false){
+        return{false, RES_ERR_LOGIN, {}};
+      }
+      else{
+        return{true, RES_OK, {}};
+      }
+    }
   }
 
   /// Create a new key/value mapping in the table
@@ -226,7 +335,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    cout << "my_storage.cc::shutdown() is not implemented\n";
+    auth_table->clear();
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
