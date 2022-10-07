@@ -273,6 +273,7 @@ public:
     else{
       return{true, RES_OK, {}};
     }
+    return{false, RES_ERR_SERVER, {}};
 
   };
 
@@ -294,7 +295,20 @@ public:
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
-    //
+    //Get key/value from the kvstore
+    vector<uint8_t> info;
+    std::function<void(const vector<uint8_t> &)> f = [&](vector<uint8_t> val){
+      info.insert(end(info), begin(val), end(val));
+    };
+    bool result = kv_store->do_with(key, f);
+    if(result){
+      return {true, RES_OK, info};
+    }
+    else{
+      return {false, RES_ERR_KEY, {}};
+    }
+    return{false, RES_ERR_SERVER, {}};
+
   };
 
   /// Delete a key/value mapping
@@ -306,12 +320,22 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_delete(const string &user, const string &pass,
                              const string &key) {
-    cout << "my_storage.cc::kv_delete() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    bool result = kv_store->remove(key, [](){});
+    if(result){
+      return{true, RES_OK, {}};
+    }
+    else{
+      return{false, RES_ERR_KEY, {}};
+    }
+    return{false, RES_ERR_SERVER, {}};
   };
 
   /// Insert or update, so that the given key is mapped to the give value
@@ -326,13 +350,24 @@ public:
   ///         update.
   virtual result_t kv_upsert(const string &user, const string &pass,
                              const string &key, const vector<uint8_t> &val) {
-    cout << "my_storage.cc::kv_upsert() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    bool result = kv_store->upsert(key, [](){}, [](){});
+    if(result){
+      return{true, RES_OKINS, {}};
+    }
+    else{
+      return{true, RES_OKUPD, {}};
+    }
+    return{false, RES_ERR_SERVER, {}};
+    
   };
 
   /// Return all of the keys in the kv_store, as a "\n"-delimited string
@@ -346,7 +381,26 @@ public:
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    string x = "\n";
+    vector<uint8_t> linebreak;
+    linebreak.assign(begin(x), end(x));
+    vector<uint8_t> info;
+    std::function<void(const string, const vector<uint8_t> &)> f = [&](string key, vector<uint8_t> val){
+      info.insert(end(info), begin(key), end(key));
+      info.insert(end(info), begin(linebreak), end(linebreak));
+    };
+    kv_store->do_all_readonly(f, [](){});
+    if(info.empty()){
+      return {false, RES_ERR_NO_DATA, {}};
+    }
+    else{
+      return {true, RES_OK, info};
+    }
+    return {false, RES_ERR_SERVER, {}};
   };
 
   /// Shut down the storage when the server stops.  This method needs to close
