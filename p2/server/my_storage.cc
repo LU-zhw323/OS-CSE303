@@ -433,9 +433,38 @@ public:
     if (storage_file == nullptr) {
       return {true, "File not found: " + filename, {}};
     }
+    
+    //clear auth_table
+    auth_table->clear();
+    kv_store->clear();
+    
+    //read the content of the file
+    vector<uint8_t> load = load_entire_file(this->filename);
+    
+    //Counter to record the position;
+    size_t counter = 0;
+    //boolean to findout what we should load
+    bool onAuth = false;
+    bool onKV = false;
+    //Start looping and read information, each loop corresponding to one user
+    //Since length of username, password, salt, content are unknown, for loop won't help
+    while(counter<load.size()){
+      //Read the first 8 byte to see which one we should load
+      string target;
+      //Pointer of file vector
+      uint8_t* d = load.data();
+      //Determine the first 8 byte
+      vector<uint8_t> tag;
+      for(int i = counter; i< counter+8; i++){
+        tag.push_back(*(d+i));
+      }
+      string Tag;
+      Tag.assign(tag.begin(), tag.end());
 
-    cout << "my_storage.cc::load_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+
+
+    }
+    return {true, "Loaded: "+filename, {}};
   };
 };
 
