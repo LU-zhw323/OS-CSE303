@@ -449,8 +449,6 @@ public:
     //Start looping and read information, each loop corresponding to one user
     //Since length of username, password, salt, content are unknown, for loop won't help
     while(counter<load.size()){
-      //Read the first 8 byte to see which one we should load
-      string target;
       //Pointer of file vector
       uint8_t* d = load.data();
       //Determine the first 8 byte
