@@ -458,9 +458,106 @@ public:
       }
       string Tag;
       Tag.assign(tag.begin(), tag.end());
+      if(strcmp(Tag.c_str(),AUTHENTRY.c_str()) == 0){
+        onAuth = true;
+      }
+      else{
+        onKV = true;
+      }
+      counter += 8;
+      //Case for authtable
+      if(onAuth){
+        AuthTableEntry entry;
+        string user;
+        vector<uint8_t> salt;
+        vector<uint8_t> pass_hass;
+        vector<uint8_t> content;
+        //read the length of username
+        size_t user_size;
+        memcpy(&user_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read username
+        vector<uint8_t> user_block;
+        for(int i = counter; i < counter + user_size; i++){
+          user_block.push_back(*(d+i));
+        }
+        user.assign(user_block.begin(), user_block.end());
+        entry.username = user;
+        counter += user_size;
 
+        //read length of salt
+        size_t salt_size;
+        memcpy(&salt_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read salt
+        for(int i = counter; i < counter + salt_size; i++){
+          salt.push_back(*(d+i));
+        }
+        entry.salt = salt;
+        counter += salt_size;
 
+        //read length of password
+        size_t pass_size;
+        memcpy(&pass_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read password
+        for(int i = counter; i < counter +pass_size; i++){
+          pass_hass.push_back(*(d+i));
+        }
+        entry.pass_hash = pass_hass;
+        counter += pass_size;
 
+        //read length of content
+        size_t content_size;
+        memcpy(&content_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read content if size > 0
+        if(content_size > 0){
+          for(int i = counter; i < counter + content_size; i++){
+            content.push_back(*(d+i));
+          }
+          counter += content_size;
+          entry.content = content;
+        }
+        else{
+          entry.content = {};
+        }
+        //After reading, call insert()
+        auth_table->insert(entry.username,entry,[](){} );
+       
+        while(counter % 8 != 0){
+          counter += 1;
+        }
+      }
+      else{
+        string key;
+        vector<uint8_t> val;
+        //read the length of username
+        size_t key_size;
+        memcpy(&key_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //Read key
+        vector<uint8_t> temp_key;
+        for(int i = counter; i <counter + key_size; i++){
+          temp_key.push_back(*(d+i));
+        }
+        key.assign(temp_key.begin(), temp_key.end());
+        counter += key_size;
+        //Read the length of value
+        size_t val_size;
+        memccpy(&val_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //Read val
+        for(int i = counter; i < counter+val_size; i++){
+          val.push_back(*(d+i));
+        }
+        counter += val_size;
+        kv_store->insert(key, val, [](){});
+        
+        while(counter % 8 != 0){
+          counter += 1;
+        }
+      }
     }
     return {true, "Loaded: "+filename, {}};
   };
