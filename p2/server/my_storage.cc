@@ -33,6 +33,12 @@ class MyStorage : public Storage {
   /// which we persist the Storage object every time it changes
   string filename = "";
 
+//mutex that are used to lock the read&write process in save_file()
+private:
+  mutex lock_read; //mutex to lock read
+  mutex lock_write_auth; //mutex to lock write of authtable to file
+  mutex lock_write_kv; //mutex to lock write of kvstore to file
+
 public:
   /// Construct an empty object and specify the file from which it should be
   /// loaded.  To avoid exceptions and errors in the constructor, the act of
@@ -377,7 +383,6 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_all(const string &user, const string &pass) {
-    cout << "my_storage.cc::kv_all() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
@@ -418,8 +423,90 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t save_file() {
-    cout << "my_storage.cc::save_file() is not implemented\n";
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    const char* f_name = (filename + ".tmp").c_str();
+    //Open a file with above file name and open it as a binary file in write mode
+    //Lock before we read the file
+    const lock_guard<mutex> guard(lock_read);
+    FILE* sav = fopen(f_name,"wb");
+    //Define a function to read and write all username in auth_table
+    std::function<void(const string, const AuthTableEntry &)> sav_auth = [&](string, AuthTableEntry entry){
+      vector<uint8_t> info;
+      //According to format, we need AUTHNTRY before anything
+      info.insert(end(info), AUTHENTRY.begin(), AUTHENTRY.end());
+
+      //Get size of user, put them into the info
+      vector<uint8_t> user(sizeof(entry.username));
+      user.assign(entry.username.begin(), entry.username.end());
+      vector<uint8_t> user_s = size_block(user);
+      info.insert(end(info), begin(user_s), end(user_s));
+      info.insert(end(info), begin(entry.username), end(entry.username));
+
+
+      //Get the size of salt, put them into info
+      vector<uint8_t> salt_size;
+      salt_size = size_block(entry.salt);
+      info.insert(end(info), begin(salt_size), end(salt_size));
+      info.insert(end(info), begin(entry.salt), end(entry.salt));
+
+      //Get Hasspass
+      vector<uint8_t> pass_s;
+      pass_s = size_block(entry.pass_hash);
+      info.insert(end(info), begin(pass_s), end(pass_s));
+      info.insert(end(info), begin(entry.pass_hash), end(entry.pass_hash));
+
+      //Get content
+      vector<uint8_t> content_s;
+      content_s = size_block(entry.content);
+      info.insert(end(info), begin(content_s), end(content_s));
+      if(content_s.size() > 0){
+        info.insert(end(info), begin(entry.content), end(entry.content));
+      }
+
+      //Binary write of some bytes of padding, to ensure that the next entry will  be aligned on an 8-byte boundary.
+      while(info.size( )% 8 != 0){
+        info.push_back('\0');
+      }
+      //Write the vector
+      //Since do_all_readonly will lock the entire bucket, we do not need to worry about the 
+      //content we read from, but we still need to lock the fwrite to ensure the content in save file
+      const lock_guard<mutex> guard(lock_write_auth);
+      fwrite(info.data(), info.size(), 1, sav); //lock guard unlock after fwrite
+    };
+    auth_table->do_all_readonly(sav_auth, [](){});
+
+
+
+    //Define a function to read and write all username in kvstore
+    std::function<void(const string, const vector<uint8_t> &)> sav_kv = [&](string key, vector<uint8_t> val){
+      vector<uint8_t> info;
+      //According to format, we need KVENTRY before anything
+      info.insert(end(info), KVENTRY.begin(), KVENTRY.end());
+      //Size and content of key
+      vector<uint8_t> key_block(sizeof(key));
+      key_block.assign(key.begin(), key.end());
+      vector<uint8_t> key_s = size_block(key_block);
+      info.insert(end(info), begin(key_s), end(key_s));
+      info.insert(end(info), begin(key_block),end(key_block));
+      //Size and content of value
+      vector<uint8_t> val_s = size_block(val);
+      info.insert(end(info), begin(val_s), end(val_s));
+      info.insert(end(info), begin(val), end(val));
+      //Binary write of some bytes of padding, to ensure that the next entry will  be aligned on an 8-byte boundary.
+      while(info.size( )% 8 != 0){
+        info.push_back('\0');
+      }
+      //Write the vector
+      //Since do_all_readonly will lock the entire bucket, we do not need to worry about the 
+      //content we read from, but we still need to lock the fwrite to ensure the content in save file
+      const lock_guard<mutex> guard(lock_write_kv);
+      fwrite(info.data(), info.size(), 1, sav); //lock guard unlock after fwrite
+    };
+    kv_store->do_all_readonly(sav_kv,[](){});
+    fclose(sav);
+
+    //replace the old file with the new one
+    rename((this->filename+".tmp").c_str(),this->filename.c_str());
+    return {true, RES_OK, {}};//lock guard unlock
   }
 
   /// Populate the Storage object by loading this.filename.  Note that load()
