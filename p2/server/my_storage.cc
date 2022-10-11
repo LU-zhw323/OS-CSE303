@@ -547,9 +547,11 @@ public:
       Tag.assign(tag.begin(), tag.end());
       if(strcmp(Tag.c_str(),AUTHENTRY.c_str()) == 0){
         onAuth = true;
+        onKV = false;
       }
       else{
         onKV = true;
+        onAuth = false;
       }
       counter += 8;
       //Case for authtable
