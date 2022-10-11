@@ -365,7 +365,7 @@ public:
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
-    bool result = kv_store->upsert(key, [](){}, [](){});
+    bool result = kv_store->upsert(key, val, [](){}, [](){});
     if(result){
       return{true, RES_OKINS, {}};
     }
@@ -413,7 +413,7 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    auth_table->clear();
+    //auth_table->clear();
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
@@ -632,7 +632,7 @@ public:
         counter += key_size;
         //Read the length of value
         size_t val_size;
-        memccpy(&val_size, &load.at(counter), sizeof(size_t));
+        memcpy(&val_size, &load.at(counter), sizeof(size_t));
         counter += 8;
         //Read val
         for(int i = counter; i < counter+val_size; i++){
