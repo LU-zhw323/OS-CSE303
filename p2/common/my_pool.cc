@@ -35,12 +35,12 @@ public:
     //Construct worker threads
     for(int i = 0; i < size; i++){
       //Lambda function that wokrers should work on
-      auto work = [&](){
+      auto work = [&](function<bool(int)> handler){
         while(active){
           //lock before wait()
           unique_lock<mutex> lock(Lock);
           //Block current thread if the queue is empty
-          while(sd_pool.empty()){
+          if(sd_pool.empty()){
             cond.wait(lock);
           }
           //Proceed to take sd from the queue
@@ -57,7 +57,7 @@ public:
           close(current_sd);
         }
       };
-      workers.push_back(thread(work));
+      workers.push_back(thread(work,handler));
     }
   }
 
@@ -81,7 +81,12 @@ public:
   /// Shutting down the pool can take some time.  await_shutdown() lets a user
   /// of the pool wait until the threads are all done servicing clients.
   virtual void await_shutdown() {
-    cout << "my_pool::await_shutdown() is not implemented";
+    //Join all the worker thread
+    for(std::thread & worker:workers){
+      if(worker.joinable()){
+        worker.join();
+      }
+    }
   }
 
   /// When a new connection arrives at the server, it calls this to pass the
