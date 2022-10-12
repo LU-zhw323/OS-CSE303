@@ -53,9 +53,10 @@ public:
   ///
   ///@return The poistion of the key value in the table
   int prehash(K key){
-    size_t hsh = hash<K>()(key);
-    int prehash = (int) hsh%kvstore.size();
-    return prehash;
+    hash<K> hash_key;
+    size_t hash_val = hash_key(key);
+    int preHash = (int)hash_val % kvstore.size();
+    return preHash;
   }
 
 
