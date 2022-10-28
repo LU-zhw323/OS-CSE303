@@ -38,12 +38,14 @@ class MyStorage : public Storage {
   /// which we persist the Storage object every time it changes
   string filename = "";
 
+  /// The file that we store
+  FILE *log = nullptr;
+
 //mutex that are used to lock the read&write process in save_file()
 private:
   mutex lock_read; //mutex to lock read
-  mutex lock_write_auth; //mutex to lock write of authtable to file
-  mutex lock_write_kv; //mutex to lock write of kvstore to file
-  mutex lock_operation;
+  mutex lock_operation; //mutex to lock any operation that make changes
+  mutex lock_write; //mutex to lock write
 
 public:
   /// Construct an empty object and specify the file from which it should be
@@ -432,8 +434,10 @@ public:
     const char* f_name = (filename + ".tmp").c_str();
     //Open a file with above file name and open it as a binary file in write mode
     //Lock before we read the file
-    const lock_guard<mutex> guard(lock_read);
-    FILE* sav = fopen(f_name,"wb");
+    const lock_guard<mutex> guard_operation(lock_operation);
+    //Switch mode
+    fclose(log);
+    log = fopen(f_name,"wb");
     //Define a function to read and write all username in auth_table
     std::function<void(const string, const AuthTableEntry &)> sav_auth = [&](string, AuthTableEntry entry){
       vector<uint8_t> info;
@@ -475,8 +479,8 @@ public:
       //Write the vector
       //Since do_all_readonly will lock the entire bucket, we do not need to worry about the 
       //content we read from, but we still need to lock the fwrite to ensure the content in save file
-      const lock_guard<mutex> guard(lock_write_auth);
-      fwrite(info.data(), info.size(), 1, sav); //lock guard unlock after fwrite
+      const lock_guard<mutex> guard(lock_write);
+      fwrite(info.data(), info.size(), 1, log); //lock guard unlock after fwrite
     };
     auth_table->do_all_readonly(sav_auth, [](){});
 
@@ -504,14 +508,14 @@ public:
       //Write the vector
       //Since do_all_readonly will lock the entire bucket, we do not need to worry about the 
       //content we read from, but we still need to lock the fwrite to ensure the content in save file
-      const lock_guard<mutex> guard(lock_write_kv);
-      fwrite(info.data(), info.size(), 1, sav); //lock guard unlock after fwrite
+      const lock_guard<mutex> guard(lock_write);
+      fwrite(info.data(), info.size(), 1, log); //lock guard unlock after fwrite
     };
     kv_store->do_all_readonly(sav_kv,[](){});
-    fclose(sav);
-
+    fclose(log);
     //replace the old file with the new one
     rename((this->filename+".tmp").c_str(),this->filename.c_str());
+    log = fopen(filename.c_str(), "ab");
     return {true, RES_OK, {}};//lock guard unlock
   }
 
@@ -523,10 +527,10 @@ public:
   ///         non-existent file is not an error.
   virtual result_t load_file() {
     const lock_guard<mutex> guard_operation(lock_operation);
-    FILE *storage_file = fopen(filename.c_str(), "r");
-    if (storage_file == nullptr) {
+    log = fopen(filename.c_str(), "r");
+    if (log == nullptr) {
       //create binary file to write
-      storage_file = fopn(filename.c_str(),'wb');
+      log = fopn(filename.c_str(),"wb");
       return {true, "File not found: " + filename, {}};
     }
     
@@ -717,8 +721,8 @@ public:
 
     }
     //Change file mode to ab mode
-    fclose(storage_file);
-    storage_file = fopen(filename.c_str(), 'ab');
+    fclose(log);
+    log = fopen(filename.c_str(), "ab");
     return {true, "Loaded: "+filename, {}};
   };
 };
