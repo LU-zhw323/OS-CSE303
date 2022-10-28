@@ -716,6 +716,9 @@ public:
       }
 
     }
+    //Change file mode to ab mode
+    fclose(storage_file);
+    storage_file = fopen(filename.c_str(), 'ab');
     return {true, "Loaded: "+filename, {}};
   };
 };
