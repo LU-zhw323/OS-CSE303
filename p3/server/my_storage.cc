@@ -421,7 +421,8 @@ public:
   /// up any state related to .so files.  This is only called when all threads
   /// have stopped accessing the Storage object.
   virtual void shutdown() {
-    //auth_table->clear();
+    const lock_guard<mutex> guard_operation(lock_operation);
+    fclose(log);
   }
 
   /// Write the entire Storage object to the file specified by this.filename. To
