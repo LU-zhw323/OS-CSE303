@@ -43,6 +43,7 @@ private:
   mutex lock_read; //mutex to lock read
   mutex lock_write_auth; //mutex to lock write of authtable to file
   mutex lock_write_kv; //mutex to lock write of kvstore to file
+  mutex lock_operation;
 
 public:
   /// Construct an empty object and specify the file from which it should be
@@ -521,8 +522,11 @@ public:
   /// @return A result tuple, as described in storage.h.  Note that a
   ///         non-existent file is not an error.
   virtual result_t load_file() {
+    const lock_guard<mutex> guard_operation(lock_operation);
     FILE *storage_file = fopen(filename.c_str(), "r");
     if (storage_file == nullptr) {
+      //create binary file to write
+      storage_file = fopn(filename.c_str(),'wb');
       return {true, "File not found: " + filename, {}};
     }
     
@@ -538,6 +542,9 @@ public:
     //boolean to findout what we should load
     bool onAuth = false;
     bool onKV = false;
+    bool onAuthDif = false;
+    bool onKvUpt = false;
+    bool onKvDel = false;
     //Start looping and read information, each loop corresponding to one user
     //Since length of username, password, salt, content are unknown, for loop won't help
     while(counter<load.size()){
@@ -552,15 +559,22 @@ public:
       Tag.assign(tag.begin(), tag.end());
       if(strcmp(Tag.c_str(),AUTHENTRY.c_str()) == 0){
         onAuth = true;
-        onKV = false;
+      }
+      else if(strcmp(Tag.c_str(), KVENTRY.c_str()) == 0){
+        onKV = true;
+      }
+      else if(strcmp(Tag.c_str(),KVUPDATE.c_str()) == 0){
+        onKvUpt = true;
+      }
+      else if(strcmp(Tag.c_str(), KVDELETE.c_str()) == 0){
+        onKvDel = true;
       }
       else{
-        onKV = true;
-        onAuth = false;
+        onAuthDif = true;
       }
       counter += 8;
       //Case for authtable
-      if(onAuth){
+      if(onAuth || onAuthDif){
         AuthTableEntry entry;
         string user;
         vector<uint8_t> salt;
@@ -618,12 +632,51 @@ public:
         }
         //After reading, call insert()
         auth_table->insert(entry.username,entry,[](){} );
-       
         while(counter % 8 != 0){
           counter += 1;
         }
       }
-      else{
+      else if(onAuthDif){
+        string user;
+        vector<uint8_t> content;
+        //read the length of username
+        size_t user_size;
+        memcpy(&user_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read username
+        vector<uint8_t> user_block;
+        for(int i = counter; i < counter + user_size; i++){
+          user_block.push_back(*(d+i));
+        }
+        user.assign(user_block.begin(), user_block.end());
+        counter += user_size;
+        //read length of content
+        size_t content_size;
+        memcpy(&content_size, &load.at(counter), sizeof(size_t));
+        counter += 8;
+        //read content if size > 0
+        if(content_size > 0){
+          for(int i = counter; i < counter + content_size; i++){
+            content.push_back(*(d+i));
+          }
+          counter += content_size;
+        }
+        else{
+          content = {};
+        }
+        //Define function to update content
+        std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
+          entry.content = content;
+          auth_table->upsert(user, entry, [](){}, [](){});
+        };
+        auth_table->do_with(user, f);
+        while(counter % 8 != 0){
+          counter += 1;
+        }
+
+
+      }
+      else if(onKV || onKvUpt || onKvDel){
         string key;
         vector<uint8_t> val;
         //read the length of username
@@ -637,21 +690,31 @@ public:
         }
         key.assign(temp_key.begin(), temp_key.end());
         counter += key_size;
-        //Read the length of value
-        size_t val_size;
-        memcpy(&val_size, &load.at(counter), sizeof(size_t));
-        counter += 8;
-        //Read val
-        for(int i = counter; i < counter+val_size; i++){
-          val.push_back(*(d+i));
+        //If KVDELETE, we delete the kv pair
+        if(onKvDel){
+          kv_store->remove(key, [](){});
         }
-        counter += val_size;
-        kv_store->insert(key, val, [](){});
-        
+        else{
+          //Read the length of value
+          size_t val_size;
+          memcpy(&val_size, &load.at(counter), sizeof(size_t));
+          counter += 8;
+          //Read val
+          for(int i = counter; i < counter+val_size; i++){
+            val.push_back(*(d+i));
+          }
+          counter += val_size;
+          kv_store->insert(key, val, [](){});
+          //If KVUPDATE
+          if(onKvUpt){
+            kv_store->upsert(key, val, [](){}, [](){});
+          }
+        }
         while(counter % 8 != 0){
           counter += 1;
         }
       }
+
     }
     return {true, "Loaded: "+filename, {}};
   };
