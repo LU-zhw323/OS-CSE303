@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include "../common/contextmanager.h"
 #include "../common/err.h"
@@ -68,15 +69,6 @@ public:
   /// Destructor for the storage object.
   virtual ~MyStorage() {}
 
-  //Helper function to take a vector and put its size into a vector<uint8_t>
-  ///@param v vector to get it size
-  ///@return a vector contain the size
-  vector<uint8_t> size_block(vector<uint8_t> block){
-    size_t size = block.size();
-    vector<uint8_t> sizeB(sizeof(size));
-    memcpy(sizeB.data(), &size, sizeof(size));
-    return sizeB;
-  }
 
   /// Create a new entry in the Auth table.  If the user already exists, return
   /// an error.  Otherwise, create a salt, hash the password, and then save an
@@ -369,11 +361,31 @@ public:
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
-    bool result = kv_store->upsert(key, val, [](){}, [](){});
+    //Write insertion log when insert
+    std::function<void()> on_ins = [&](){
+      vector<uint8_t> res = log_kvblock(KVENTRY, key, val);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write to the open bucket
+        fwrite(res.data(),res.size(),1,log);
+        fflush(log);
+        fsync(fileno(log));
+    };
+    //Write update log when update
+    std::function<void()> on_upt = [&](){
+      vector<uint8_t> res = log_kvblock(KVUPDATE, key, val);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write to the open bucket
+        fwrite(res.data(),res.size(),1,log);
+        fflush(log);
+        fsync(fileno(log));
+    };
+    bool result = kv_store->upsert(key, val, on_ins, on_upt);
     if(result){
       return{true, RES_OKINS, {}};
     }
