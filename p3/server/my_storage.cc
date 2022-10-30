@@ -134,7 +134,11 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
-    
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
     //Define function to update content
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
       entry.content = content;
@@ -165,6 +169,11 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(who.length() > 0);
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
     //Define the function to fetch content
     vector<uint8_t> content;
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
@@ -195,6 +204,11 @@ public:
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
     
     //string names;
     vector<uint8_t> names;
@@ -266,13 +280,24 @@ public:
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     //Authorize user and pass
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
+    std::function<void()> on_success = [&](){
+      vector<uint8_t> res = log_kvblock(KVENTRY, key, NULL);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
+    };
     //Insert key/value
-    bool result = kv_store->insert(key,val, [](){});
+    bool result = kv_store->insert(key,val, on_success);
     if(!result){
       return{false, RES_ERR_KEY, {}};
     }
@@ -330,6 +355,8 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
