@@ -306,7 +306,7 @@ public:
     std::function<void(const vector<uint8_t> &)> f = [&](vector<uint8_t> val){
       info.insert(end(info), begin(val), end(val));
     };
-    bool result = kv_store->do_with(key, f);
+    bool result = kv_store->do_with_readonly(key, f);
     if(result){
       return {true, RES_OK, info};
     }
@@ -334,7 +334,16 @@ public:
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
-    bool result = kv_store->remove(key, [](){});
+    std::function<void()> on_success = [&](){
+      vector<uint8_t> res = log_kvblock(KVDELETE, key, NULL);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
+    };
+    bool result = kv_store->remove(key, on_success);
     if(result){
       return{true, RES_OK, {}};
     }
@@ -371,19 +380,21 @@ public:
     std::function<void()> on_ins = [&](){
       vector<uint8_t> res = log_kvblock(KVENTRY, key, val);
       const std::lock_guard<mutex> guard_write(lock_write);
-      //write to the open bucket
-        fwrite(res.data(),res.size(),1,log);
-        fflush(log);
-        fsync(fileno(log));
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
     };
     //Write update log when update
     std::function<void()> on_upt = [&](){
       vector<uint8_t> res = log_kvblock(KVUPDATE, key, val);
       const std::lock_guard<mutex> guard_write(lock_write);
-      //write to the open bucket
-        fwrite(res.data(),res.size(),1,log);
-        fflush(log);
-        fsync(fileno(log));
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
     };
     bool result = kv_store->upsert(key, val, on_ins, on_upt);
     if(result){
