@@ -82,6 +82,8 @@ public:
     // NB: These asserts are to prevent compiler warnings
     assert(user.length() > 0);
     assert(pass.length() > 0);
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     //Create a authetable of username and pass word
     AuthTableEntry newUser;
     newUser.username = user;
@@ -111,7 +113,15 @@ public:
     //Add content
     newUser.content = {};
     //Function on success
-    std::function<void()> onsuccess = [](){};
+    std::function<void()> onsuccess = [&](){
+      vector<uint8_t> res = log_authblock(AUTHENTRY, user, salt, hashPass, newUser.content);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
+    };
     //Insert newUser into table
     bool result = auth_table->insert(user, newUser, onsuccess);
     if(!result){
@@ -141,13 +151,33 @@ public:
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
-    //Define function to update content
+    AuthTableEntry new_entry;
     std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
-      entry.content = content;
-      auth_table->upsert(user, entry, [](){}, [](){});
+        new_entry = entry;
+        new_entry.content = content;
     };
-    //Create a authetable of username and pass word
-    bool result = auth_table->do_with(user, f);
+    auth_table->do_with(user, f);
+    //Write insertion log when insert
+    std::function<void()> on_ins = [&](){
+      vector<uint8_t> res = log_authblock(AUTHENTRY, new_entry.username, new_entry.salt, new_entry.pass_hash, new_entry.content);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
+    };
+    //Write update log when update
+    std::function<void()> on_upt = [&](){
+      vector<uint8_t> res = log_authblock(AUTHDIFF, new_entry.username, new_entry.salt, new_entry.pass_hash, new_entry.content);
+      const std::lock_guard<mutex> guard_write(lock_write);
+      //write data of file descriptor
+      fwrite(res.data(),res.size(),1,log);
+      fflush(log);
+      int fd = fileno(log);
+      fsync(fd);
+    };
+    bool result = auth_table->upsert(user, new_entry,on_ins, on_upt);
     if(!result){
       return {false, RES_ERR_SERVER, {}};
     }
@@ -290,7 +320,7 @@ public:
       return{false, RES_ERR_LOGIN, {}};
     }
     std::function<void()> on_success = [&](){
-      vector<uint8_t> res = log_kvblock(KVENTRY, key, NULL);
+      vector<uint8_t> res = log_kvblock(KVENTRY, key, val);
       const std::lock_guard<mutex> guard_write(lock_write);
       //write data of file descriptor
       fwrite(res.data(),res.size(),1,log);
@@ -364,7 +394,7 @@ public:
       return{false, RES_ERR_LOGIN, {}};
     }
     std::function<void()> on_success = [&](){
-      vector<uint8_t> res = log_kvblock(KVDELETE, key, NULL);
+      vector<uint8_t> res = log_kvblock(KVDELETE, key, {});
       const std::lock_guard<mutex> guard_write(lock_write);
       //write data of file descriptor
       fwrite(res.data(),res.size(),1,log);
@@ -583,7 +613,7 @@ public:
     log = fopen(filename.c_str(), "r");
     if (log == nullptr) {
       //create binary file to write
-      log = fopn(filename.c_str(),"wb");
+      log = fopen(filename.c_str(),"wb");
       return {true, "File not found: " + filename, {}};
     }
     
@@ -729,8 +759,8 @@ public:
         //Define function to update content
         AuthTableEntry new_entry;
         std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
-          entry.content = content;
-          new_entry = entry
+          new_entry = entry;
+          new_entry.content = content;
         };
         auth_table->do_with(user, f);
         auth_table->upsert(user, new_entry,[](){}, [](){});
