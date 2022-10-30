@@ -562,11 +562,16 @@ public:
     bool onAuthDif = false;
     bool onKvUpt = false;
     bool onKvDel = false;
+    //Pointer of file vector
+    uint8_t* d = load.data();
     //Start looping and read information, each loop corresponding to one user
     //Since length of username, password, salt, content are unknown, for loop won't help
     while(counter<load.size()){
-      //Pointer of file vector
-      uint8_t* d = load.data();
+      onAuth = false;
+      onKV = false;
+      onAuthDif = false;
+      onKvUpt = false;
+      onKvDel = false;
       //Determine the first 8 byte
       vector<uint8_t> tag;
       for(int i = counter; i< counter+8; i++){
@@ -591,7 +596,7 @@ public:
       }
       counter += 8;
       //Case for authtable
-      if(onAuth || onAuthDif){
+      if(onAuth){
         AuthTableEntry entry;
         string user;
         vector<uint8_t> salt;
@@ -682,11 +687,13 @@ public:
           content = {};
         }
         //Define function to update content
+        AuthTableEntry new_entry;
         std::function<void(AuthTableEntry &)> f = [&](AuthTableEntry entry){
           entry.content = content;
-          auth_table->upsert(user, entry, [](){}, [](){});
+          new_entry = entry
         };
         auth_table->do_with(user, f);
+        auth_table->upsert(user, new_entry,[](){}, [](){});
         while(counter % 8 != 0){
           counter += 1;
         }

@@ -13,7 +13,7 @@
  * 
  * @return return a vector of log
 */
-vector<uint8_t> log_kvblock(string tag,const string &key, const vector<uint8_t> &val);
+std::vector<uint8_t> log_kvblock(std::string tag,const std::string &key, const std::vector<uint8_t> &val);
 
 /**
  * Helper function to generate the auth log
@@ -24,4 +24,4 @@ vector<uint8_t> log_kvblock(string tag,const string &key, const vector<uint8_t> 
 //Helper function to take a vector and put its size into a vector<uint8_t>
   ///@param v vector to get it size
   ///@return a vector contain the size
-vector<uint8_t> size_block(vector<uint8_t> block);
+std::vector<uint8_t> size_block(std::vector<uint8_t> block);
