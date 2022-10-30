@@ -134,6 +134,8 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(content.size() > 0);
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     //Authorize user and pass
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){

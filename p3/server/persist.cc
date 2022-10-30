@@ -53,3 +53,53 @@ std::vector<uint8_t> size_block(std::vector<uint8_t> block){
     memcpy(sizeB.data(), &size, sizeof(size));
     return sizeB;
 }
+
+
+
+/**
+ * Helper function to generate the auth log
+ * @param tag tag for log
+ * @param user username
+ * @param password password
+ * @param content content
+ * 
+ * @return return a vector of log
+ */
+std::vector<uint8_t> log_authblock(std::string tag,const std::string &user, std::vector<uint8_t> salt, const std::vector<uint8_t> &pass, const std::vector<uint8_t> &content){
+    std::vector<uint8_t> res;
+    res.insert(res.end(), tag.begin(), tag.end());
+    std::vector<uint8_t> user_block;
+    user_block.assign(user.begin(), user.end());
+    std::vector<uint8_t> user_sblock = size_block(user_block);
+    res.insert(res.end(),user_sblock.begin(), user_sblock.end());
+    res.insert(res.end(), user_block.begin(), user_block.end());
+    //For Entry
+    if(strcmp(tag.c_str(),AUTHENTRY.c_str()) == 0){
+        std::vector<uint8_t> salt_sblock = size_block(salt);
+        res.insert(res.end(),salt_sblock.begin(), salt_sblock.end());
+        res.insert(res.end(), salt.begin(), salt.end());
+        std::vector<uint8_t> pass_sblock = size_block(pass);
+        res.insert(res.end(),pass_sblock.begin(), pass_sblock.end());
+        res.insert(res.end(), pass.begin(), pass.end());
+        size_t content_size = content.size();
+        std::vector<uint8_t> content_sblock = size_block(content);
+        res.insert(res.end(), content_sblock.begin(), content_sblock.end());
+        if(content_size > 0){
+            res.insert(res.end(),content.begin(),content.end());
+        }
+         while(res.size()%8!=0){
+            res.push_back('\0');
+        }
+    }
+    //For Dif
+    else{
+        size_t content_size = content.size();
+        std::vector<uint8_t> content_sblock = size_block(content);
+        res.insert(res.end(), content_sblock.begin(), content_sblock.end());
+        res.insert(res.end(),content.begin(),content.end());
+         while(res.size()%8!=0){
+            res.push_back('\0');
+        }
+    }
+    return res;
+}
