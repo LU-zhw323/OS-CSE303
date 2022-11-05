@@ -40,7 +40,7 @@ class MyStorage : public Storage {
   string filename = "";
 
   /// The file that we store
-  FILE *log = nullptr;
+  FILE *log;
 
 //mutex that are used to lock the read&write process in save_file()
 private:
@@ -156,7 +156,10 @@ public:
         new_entry = entry;
         new_entry.content = content;
     };
-    auth_table->do_with(user, f);
+    bool find_content = auth_table->do_with(user, f);
+    if(!find_content){
+      return {false, RES_ERR_NO_USER, {}};
+    }
     //Write insertion log when insert
     std::function<void()> on_ins = [&](){
       vector<uint8_t> res = log_authblock(AUTHENTRY, new_entry.username, new_entry.salt, new_entry.pass_hash, new_entry.content);
@@ -178,12 +181,7 @@ public:
       fsync(fd);
     };
     bool result = auth_table->upsert(user, new_entry,on_ins, on_upt);
-    if(!result){
-      return {false, RES_ERR_SERVER, {}};
-    }
-    else{
-      return {true, RES_OK, {}};
-    }
+    return {true, RES_OK, {}};
   }
 
   /// Return a copy of the user data for a user, but do so only if the password
@@ -609,6 +607,7 @@ public:
   /// @return A result tuple, as described in storage.h.  Note that a
   ///         non-existent file is not an error.
   virtual result_t load_file() {
+    //While loading, no other operation can execute
     const lock_guard<mutex> guard_operation(lock_operation);
     log = fopen(filename.c_str(), "r");
     if (log == nullptr) {
