@@ -11,6 +11,12 @@ using namespace std;
 /// events within a pre-set, fixed time threshold, to decide if a new event can
 /// be allowed without violating a quota.
 class my_quota_tracker : public quota_tracker {
+  //Maximum Threshold
+  size_t max_threshold;
+  //Maximum duration
+  double max_duration;
+  //data structure
+  deque<pair<time_t, double>> quota;
 
 public:
   /// Construct a tracker that limits usage to quota_amount per quota_duration
@@ -18,7 +24,10 @@ public:
   ///
   /// @param amount   The maximum amount of service
   /// @param duration The time over which the service maximum can be spread out
-  my_quota_tracker(size_t amount, double duration) {}
+  my_quota_tracker(size_t amount, double duration) {
+    max_threshold = amount;
+    max_duration = duration;
+  }
 
   /// Destruct a quota tracker
   virtual ~my_quota_tracker() {}
@@ -32,7 +41,32 @@ public:
   /// @return false if the amount could not be added without violating the
   ///         quota, true if the amount was added while preserving the quota
   virtual bool check_add(size_t amount) {
-    cout << "my_quota_tracker.cc::check_add() is not implemented\n";
+   //erase all the old events that is over the max_duration time
+   auto p = quota.rbegin();
+   while(p != quota.rend()){
+    if(difftime(time(NULL), p->first) > max_duration){
+      quota.pop_back();
+    }
+    else{
+      //if the current one is within the max_duarion, we do not check the rest
+      break;
+    }
+    p++;
+   }
+   //check max_threshold and insert
+   size_t current_threshold = amount;
+   auto d = quota.begin();
+   while(d != quota.end()){
+    current_threshold += d->second;
+    d ++;
+   }
+   if(current_threshold > max_threshold){
+    return false;
+   }
+   else{
+    quota.push_front(make_pair(time(NULL), amount));
+    return true;
+   }
   }
 };
 
