@@ -192,6 +192,7 @@ public:
       //add size of val to upload quota
       err_up = quota->uploads->check_add(val.size());
     };
+    quota_table->do_with(user, f);
     if(!err_req){
       return {false, RES_ERR_QUOTA_REQ, {}};
     }
@@ -220,13 +221,48 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_get(const string &user, const string &pass,
                           const string &key) {
-    cout << "my_storage.cc::kv_get() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Add quota
+    bool err_req = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+    };
+    quota_table->do_with(user, f);
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    //Get key/value from the kvstore
+    vector<uint8_t> info;
+    std::function<void(const vector<uint8_t> &)> f = [&](vector<uint8_t> val){
+      info.insert(end(info), begin(val), end(val));
+    };
+    bool result = kv_store->do_with_readonly(key, f);
+    if(!result){
+      return{false, RES_ERR_KEY, {}};
+    }
+    //Check if we can add to download quota
+    bool err_down = false;
+    std::function<void(const vector<uint8_t> &)> F = [&](Quotas* quota){
+      //add val.size() threshold to req quota
+      err_down = quota->downloads->check_add(info.size());
+    };
+    quota_table->do_with(user, F);
+    if(!err_down){
+      return {false, RES_ERR_QUOTA_DOWN, {}};
+    }
+    mru->insert(key);
+    return {true, RES_OK, info};
+
   };
 
   /// Delete a key/value mapping
