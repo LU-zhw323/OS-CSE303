@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include<mutex>
 
 #include "../common/contextmanager.h"
 #include "../common/err.h"
@@ -60,6 +61,12 @@ class MyStorage : public Storage {
 
   /// A table for tracking quotas
   Map<string, Quotas *> *quota_table;
+
+//mutex that are used to lock the read&write process in save_file()
+private:
+  mutex lock_read; //mutex to lock read
+  mutex lock_operation; //mutex to lock any operation that make changes
+  mutex lock_write; //mutex to lock write
 
 public:
   /// Construct an empty object and specify the file from which it should be
@@ -163,14 +170,45 @@ public:
                              const string &key, const vector<uint8_t> &val) {
     // NB: log_sv() in persist.h (implementation in persist.o) will be helpful
     //     here
-    cout << "my_storage.cc::kv_insert() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Add quota
+    bool err_req = false;
+    bool err_up = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+      //add size of val to upload quota
+      err_up = quota->uploads->check_add(val.size());
+    };
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    if(!err_up){
+      return {false, RES_ERR_QUOTA_UP, {}};
+    }
+    //insert key
+    std::function<void()> on_success = [&](){
+      log_sv(storage_file, KVENTRY, key, val);
+    };
+    bool res = kv_store->insert(key,val,on_success);
+    if(!res){
+      return{false, RES_ERR_KEY, {}};
+    }
+    //add to mru
+    mru->insert(key);
+    return{true, RES_OK, {}};
   };
 
   /// Get a copy of the value to which a key is mapped
