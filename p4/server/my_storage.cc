@@ -274,15 +274,33 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_delete(const string &user, const string &pass,
                              const string &key) {
-    // NB: log_s() in persist.h (implementation in persist.o) will be helpful
-    //     here
-    cout << "my_storage.cc::kv_delete() is not implemented\n";
-    // NB: These asserts are to prevent compiler warnings.. you can delete them
-    //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    bool err_req = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+    };
+    quota_table->do_with(user, f);
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    //remove and write log
+    bool res = kv_store->remove(key, log_s(storage_file, KVDELETE, key));
+    if(!res){
+      return {false,RES_ERR_KEY, {}};
+    }
+    //remove from mru
+    mru->remove(key);
+    return {true, RES_OK,{}};
   };
 
   /// Insert or update, so that the given key is mapped to the give value
@@ -299,14 +317,45 @@ public:
                              const string &key, const vector<uint8_t> &val) {
     // NB: log_sv() in persist.h (implementation in persist.o) will be helpful
     //     here
-    cout << "my_storage.cc::kv_upsert() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
+     //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Add quota
+    bool err_req = false;
+    bool err_up = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+      //add size of val to upload quota
+      err_up = quota->uploads->check_add(val.size());
+    };
+    quota_table->do_with(user, f);
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    if(!err_up){
+      return {false, RES_ERR_QUOTA_UP, {}};
+    }
+    bool res = kv_store->upsert(kay,val, log_sv(storage_file, KVENTRY, key, val), log_sv(storage_file,KVUPDATE, key.val));
+    //update mru
+    mru->insert(key);
+    if(res){
+      //Insert case
+      return{true, RES_OKINS, {}};
+    }
+    else{
+      return {true, RES_OKUPD, {}};
+    }
   };
 
   /// Return all of the keys in the kv_store, as a "\n"-delimited string
