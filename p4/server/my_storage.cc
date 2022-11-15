@@ -176,13 +176,13 @@ public:
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    //Lock operation
-    const lock_guard<mutex> guard_operation(lock_operation);
     //Authorize user and pass
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     //Add quota
     bool err_req = false;
     bool err_up = false;
@@ -277,13 +277,13 @@ public:
     assert(user.length() > 0);
     assert(pass.length() > 0);
     assert(key.length() > 0);
-    //Lock operation
-    const lock_guard<mutex> guard_operation(lock_operation);
     //Authorize user and pass
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     bool err_req = false;
     std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
@@ -323,13 +323,13 @@ public:
     assert(pass.length() > 0);
     assert(key.length() > 0);
     assert(val.size() > 0);
-    //Lock operation
-    const lock_guard<mutex> guard_operation(lock_operation);
      //Authorize user and pass
     auto Auth = auth(user, pass);
     if(!Auth.succeeded){
       return{false, RES_ERR_LOGIN, {}};
     }
+    //Lock operation
+    const lock_guard<mutex> guard_operation(lock_operation);
     //Add quota
     bool err_req = false;
     bool err_up = false;
@@ -346,7 +346,7 @@ public:
     if(!err_up){
       return {false, RES_ERR_QUOTA_UP, {}};
     }
-    bool res = kv_store->upsert(kay,val, log_sv(storage_file, KVENTRY, key, val), log_sv(storage_file,KVUPDATE, key.val));
+    bool res = kv_store->upsert(key,val, log_sv(storage_file, KVENTRY, key, val), log_sv(storage_file,KVUPDATE, key.val));
     //update mru
     mru->insert(key);
     if(res){
@@ -365,12 +365,49 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_all(const string &user, const string &pass) {
-    cout << "my_storage.cc::kv_all() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+     //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    string x = "\n";
+    vector<uint8_t> linebreak;
+    linebreak.assign(begin(x), end(x));
+    vector<uint8_t> info;
+    //Add quota
+    bool err_req = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+    };
+    quota_table->do_with(user, f);
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    //read and fill the vector
+    std::function<void(const string, const vector<uint8_t> &)> F = [&](string key, vector<uint8_t> val){
+      info.insert(end(info), begin(key), end(key));
+      info.insert(end(info), begin(linebreak), end(linebreak));
+    };
+    kv_store->do_all_readonly(F, [](){});
+    if(info.empty()){
+      return {false, RES_ERR_NO_DATA, {}};
+    }
+    //Check if we can add to download quota
+    bool err_down = false;
+    std::function<void(const vector<uint8_t> &)> func = [&](Quotas* quota){
+      //add val.size() threshold to req quota
+      err_down = quota->downloads->check_add(info.size());
+    };
+    quota_table->do_with(user, func);
+    if(!err_down){
+      return {false, RES_ERR_QUOTA_DOWN, {}};
+    }
+    return {true, RES_OK, info};
   };
 
   /// Return all of the keys in the kv_store's MRU cache, as a "\n"-delimited
@@ -381,12 +418,45 @@ public:
   ///
   /// @return A result tuple, as described in storage.h
   virtual result_t kv_top(const string &user, const string &pass) {
-    cout << "my_storage.cc::kv_top() is not implemented\n";
     // NB: These asserts are to prevent compiler warnings.. you can delete them
     //     when you implement this method
     assert(user.length() > 0);
     assert(pass.length() > 0);
-    return {false, RES_ERR_UNIMPLEMENTED, {}};
+    //Authorize user and pass
+    auto Auth = auth(user, pass);
+    if(!Auth.succeeded){
+      return{false, RES_ERR_LOGIN, {}};
+    }
+    //Add quota
+    bool err_req = false;
+    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+      //add 1 threshold to req quota
+      err_req = quota->requests->check_add(1);
+    };
+    quota_table->do_with(user, f);
+    if(!err_req){
+      return {false, RES_ERR_QUOTA_REQ, {}};
+    }
+    //read from cache
+    string res = mru->get();
+    if(res.empty()){
+      return {false, RES_ERR_NO_DATA, {}};
+    }
+    vector<uint8_t> result;
+
+    //Check if we can add to download quota
+    bool err_down = false;
+    std::function<void(const vector<uint8_t> &)> func = [&](Quotas* quota){
+      //add val.size() threshold to req quota
+      err_down = quota->downloads->check_add(info.size());
+    };
+    quota_table->do_with(user, func);
+    if(!err_down){
+      return {false, RES_ERR_QUOTA_DOWN, {}};
+    }
+    result.assign(res.begin(),res.end());
+    return {true, RES_OK, result};
+    
   };
 
   /// Shut down the storage when the server stops.  This method needs to close
