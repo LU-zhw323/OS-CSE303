@@ -103,6 +103,16 @@ public:
   /// @return A result tuple, as described in storage.h
   virtual result_t add_user(const string &user, const string &pass) {
     // NB: the helper (.o provided) does all the work for this operation :)
+    //set up quota for each user
+    Quotas *user_quota = new Quotas;
+    //set up upload quota
+    user_quota->uploads = quota_factory(up_quota, quota_dur);
+    //set up download quota
+    user_quota->downloads = quota_factory(down_quota, quota_dur);
+    //set up request quota
+    user_quota->requests = quota_factory(req_quota, quota_dur);
+    //insert quota into table
+    quota_table->insert(user, user_quota, [](){});
     return add_user_helper(user, pass, auth_table, storage_file);
   }
 
@@ -505,14 +515,6 @@ public:
     //     operation.  Depending on how you choose to implement quotas, you may
     //     need to edit this.
     result_t res =  load_file_helper(auth_table, kv_store, filename, storage_file);
-    // loadfile
-    auth_table->do_all_readonly([&](const string key, AuthTableEntry){
-      Quotas *myNewQuota = new Quotas;
-      myNewQuota->uploads = quota_factory(up_quota, quota_dur);
-      myNewQuota->downloads = quota_factory(down_quota, quota_dur);
-      myNewQuota->requests = quota_factory(req_quota, quota_dur);
-      quota_table->insert(key, myNewQuota, [](){});
-    },[&](){});
     return res;
   };
 };

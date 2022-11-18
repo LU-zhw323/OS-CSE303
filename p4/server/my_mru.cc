@@ -34,7 +34,7 @@ public:
     //Lock before operation
     lock_guard<mutex> guard(mru_lock);
     //Check the size of data structure
-    if(mru.size() == deque_size){
+    if(mru.size() > deque_size){
       mru.pop_back();
     }
     //remove duplicates
