@@ -186,7 +186,7 @@ public:
     //Add quota
     bool err_req = false;
     bool err_up = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
       //add size of val to upload quota
@@ -233,7 +233,7 @@ public:
     }
     //Add quota
     bool err_req = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
     };
@@ -243,16 +243,16 @@ public:
     }
     //Get key/value from the kvstore
     vector<uint8_t> info;
-    std::function<void(const vector<uint8_t> &)> f = [&](vector<uint8_t> val){
+    std::function<void(const vector<uint8_t> &)> func = [&](vector<uint8_t> val){
       info.insert(end(info), begin(val), end(val));
     };
-    bool result = kv_store->do_with_readonly(key, f);
+    bool result = kv_store->do_with_readonly(key, func);
     if(!result){
       return{false, RES_ERR_KEY, {}};
     }
     //Check if we can add to download quota
     bool err_down = false;
-    std::function<void(const vector<uint8_t> &)> F = [&](Quotas* quota){
+    std::function<void(Quotas *&)> F = [&](Quotas* quota){
       //add val.size() threshold to req quota
       err_down = quota->downloads->check_add(info.size());
     };
@@ -285,7 +285,7 @@ public:
     //Lock operation
     const lock_guard<mutex> guard_operation(lock_operation);
     bool err_req = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
     };
@@ -293,8 +293,12 @@ public:
     if(!err_req){
       return {false, RES_ERR_QUOTA_REQ, {}};
     }
+    //insert key
+    std::function<void()> on_success = [&](){
+      log_s(storage_file, KVDELETE, key);
+    };
     //remove and write log
-    bool res = kv_store->remove(key, log_s(storage_file, KVDELETE, key));
+    bool res = kv_store->remove(key, on_success);
     if(!res){
       return {false,RES_ERR_KEY, {}};
     }
@@ -333,7 +337,7 @@ public:
     //Add quota
     bool err_req = false;
     bool err_up = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
       //add size of val to upload quota
@@ -346,7 +350,16 @@ public:
     if(!err_up){
       return {false, RES_ERR_QUOTA_UP, {}};
     }
-    bool res = kv_store->upsert(key,val, log_sv(storage_file, KVENTRY, key, val), log_sv(storage_file,KVUPDATE, key.val));
+    //onins
+    std::function<void()> on_ins = [&](){
+      log_sv(storage_file, KVENTRY, key, val);
+    };
+    //onupd
+    std::function<void()> on_upd = [&](){
+      log_sv(storage_file,KVUPDATE, key, val);
+    };
+    
+    bool res = kv_store->upsert(key,val, on_ins, on_upd);
     //update mru
     mru->insert(key);
     if(res){
@@ -380,7 +393,7 @@ public:
     vector<uint8_t> info;
     //Add quota
     bool err_req = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
     };
@@ -399,7 +412,7 @@ public:
     }
     //Check if we can add to download quota
     bool err_down = false;
-    std::function<void(const vector<uint8_t> &)> func = [&](Quotas* quota){
+    std::function<void(Quotas *&)> func = [&](Quotas* quota){
       //add val.size() threshold to req quota
       err_down = quota->downloads->check_add(info.size());
     };
@@ -429,7 +442,7 @@ public:
     }
     //Add quota
     bool err_req = false;
-    std::function<void(const vector<uint8_t> &)> f = [&](Quotas* quota){
+    std::function<void(Quotas *&)> f = [&](Quotas* quota){
       //add 1 threshold to req quota
       err_req = quota->requests->check_add(1);
     };
@@ -446,9 +459,9 @@ public:
 
     //Check if we can add to download quota
     bool err_down = false;
-    std::function<void(const vector<uint8_t> &)> func = [&](Quotas* quota){
+    std::function<void(Quotas *&)> func = [&](Quotas* quota){
       //add val.size() threshold to req quota
-      err_down = quota->downloads->check_add(info.size());
+      err_down = quota->downloads->check_add(res.size());
     };
     quota_table->do_with(user, func);
     if(!err_down){
@@ -491,7 +504,16 @@ public:
     // NB: the helper (.o provided) does all the work from p1/p2/p3 for this
     //     operation.  Depending on how you choose to implement quotas, you may
     //     need to edit this.
-    return load_file_helper(auth_table, kv_store, filename, storage_file);
+    result_t res =  load_file_helper(auth_table, kv_store, filename, storage_file);
+    // loadfile
+    auth_table->do_all_readonly([&](const string key, AuthTableEntry){
+      Quotas *myNewQuota = new Quotas;
+      myNewQuota->uploads = quota_factory(up_quota, quota_dur);
+      myNewQuota->downloads = quota_factory(down_quota, quota_dur);
+      myNewQuota->requests = quota_factory(req_quota, quota_dur);
+      quota_table->insert(key, myNewQuota, [](){});
+    },[&](){});
+    return res;
   };
 };
 
